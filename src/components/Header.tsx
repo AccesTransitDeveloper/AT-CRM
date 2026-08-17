@@ -1,6 +1,6 @@
 import React from 'react';
 import { UserRole, SystemStats } from '../types';
-import { Shield, Radio, Car, Clock, DollarSign, ChevronDown, Bot, Sparkles, Power } from 'lucide-react';
+import { Shield, Radio, Car, Clock, DollarSign, ChevronDown, Bot, Sparkles, Power, Camera, ScanFace } from 'lucide-react';
 import { useTranslation, LanguageSwitch } from '../lib/i18n';
 
 interface HeaderProps {
@@ -13,6 +13,7 @@ interface HeaderProps {
   onToggleAiAgentOpen: () => void;
   isAiAgentActive: boolean;
   onToggleAiAgentActive: (active: boolean) => void;
+  onOpenFaceLogin?: () => void;
 }
 
 export const roleStyleConfig: Record<UserRole, { color: string }> = {
@@ -42,7 +43,8 @@ export const Header: React.FC<HeaderProps> = ({
   isAiAgentOpen,
   onToggleAiAgentOpen,
   isAiAgentActive,
-  onToggleAiAgentActive
+  onToggleAiAgentActive,
+  onOpenFaceLogin
 }) => {
   const { t } = useTranslation();
 
@@ -167,8 +169,33 @@ export const Header: React.FC<HeaderProps> = ({
                     </button>
                   );
                 })}
+
+                {onOpenFaceLogin && (
+                  <div className="pt-2 mt-1 border-t border-slate-700">
+                    <button
+                      onClick={onOpenFaceLogin}
+                      className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-500 hover:to-sky-500 text-white rounded-lg text-xs font-semibold shadow-md shadow-indigo-600/20 transition-all"
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                      <span>Face ID Authentication</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
+
+            {/* Quick Face ID Switcher Button */}
+            {onOpenFaceLogin && (
+              <button
+                type="button"
+                onClick={onOpenFaceLogin}
+                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-950/70 hover:bg-indigo-900/90 text-indigo-300 border border-indigo-500/40 rounded-lg text-xs font-semibold shadow-sm transition-all"
+                title="Sign in with Face ID / Switch User"
+              >
+                <Camera className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Face ID</span>
+              </button>
+            )}
 
             {/* AI Assistant (Jarvis) Trigger & Activation Switch */}
             <div className="flex items-center space-x-1.5 bg-slate-800/90 pl-2 pr-1.5 py-1 rounded-lg border border-slate-700">

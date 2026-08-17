@@ -10,6 +10,8 @@ export type ActiveTab =
   | 'marketing' 
   | 'app_analytics' 
   | 'referrals'
+  | 'employees'
+  | 'profile'
   | 'api';
 
 export interface UserProfile {
@@ -886,3 +888,98 @@ export interface AiAgentCommandResponse {
   reportData?: any;
   auditLogId?: string;
 }
+
+// ==========================================
+// EMPLOYEES, INVITATIONS & FACE BIOMETRICS TYPES
+// ==========================================
+
+export type EmployeeStatus = 'invited' | 'active' | 'suspended' | 'blocked';
+
+export interface Employee {
+  id: string;
+  fullName: string;
+  email: string;
+  phone: string;
+  role: UserRole;
+  status: EmployeeStatus;
+  createdAt: string;
+  registeredAt?: string;
+  lastLoginAt?: string;
+  lastLoginMethod?: 'face_id' | 'password';
+  faceEnrolled: boolean;
+  faceEnrolledAt?: string;
+  faceEmbeddingVectorId?: string; // Opaque reference, raw vectors hidden
+  failedFaceAttempts: number;
+  faceLockUntil?: string;
+  invitationId?: string;
+  department?: string;
+  avatarUrl?: string;
+  notes?: string;
+}
+
+export interface EmployeeInvitation {
+  id: string;
+  token: string;
+  role: UserRole;
+  status: 'pending' | 'used' | 'revoked' | 'expired';
+  createdAt: string;
+  expiresAt: string; // 48 Hours TTL
+  firstSeenAt?: string;
+  firstSeenIp?: string;
+  firstSeenUserAgent?: string;
+  registrationIp?: string;
+  hasIpMismatchWarning?: boolean;
+  usedAt?: string;
+  usedByEmployeeId?: string;
+  targetEmail?: string;
+  targetFullName?: string;
+  createdByAdminName: string;
+}
+
+export interface EmployeeLoginAuditLog {
+  id: string;
+  employeeId?: string;
+  employeeEmail: string;
+  employeeName?: string;
+  role?: UserRole;
+  timestamp: string;
+  method: 'face_id' | 'password';
+  status: 'success' | 'failed' | 'locked';
+  confidenceScore?: number; // e.g. 0.985 (98.5%)
+  ip: string;
+  userAgent?: string;
+  details: string;
+  livenessPassed?: boolean;
+}
+
+export interface FaceEnrollmentPayload {
+  token: string;
+  fullName: string;
+  email: string;
+  phone: string;
+  password: string;
+  biometricConsent: boolean;
+  capturedFramesCount: number;
+  faceImageBase64: string; // for embedding extraction via Rekognition/Azure Face API
+  livenessData: {
+    blinkDetected: boolean;
+    headTurnDetected: boolean;
+    livenessScore: number;
+  };
+  clientIp?: string;
+  userAgent?: string;
+}
+
+export interface FaceVerificationResult {
+  matched: boolean;
+  employee?: Employee;
+  confidenceScore: number;
+  threshold: number;
+  service: 'AWS Rekognition Face API' | 'Azure Face API';
+  livenessPassed: boolean;
+  lockedOut?: boolean;
+  remainingAttempts?: number;
+  lockUntil?: string;
+  message: string;
+}
+

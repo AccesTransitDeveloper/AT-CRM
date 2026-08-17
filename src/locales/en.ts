@@ -74,7 +74,10 @@ export const en = {
     compliance: "TLC Compliance",
     marketing: "Marketing & AI",
     appAnalytics: "App Analytics (4 Apps)",
-    referrals: "Referral Program"
+    referrals: "Referral Program",
+    employees: "Employees",
+    employeesSub: "Staff & Biometrics",
+    profile: "My Profile"
   },
 
   // Driver Fleet Management
@@ -450,6 +453,130 @@ export const en = {
     roleDispatcherAccess: "Dispatch Access (Orders only)",
     roleRestricted: "Restricted Access",
     voiceNotSupported: "Voice input is not supported in this browser."
+  },
+
+  // Employees, Invitations & Biometrics
+  employees: {
+    title: "Employee & Access Management",
+    subtitle: "Staff directory, one-time invitation links with IP verification, and AWS Rekognition / Azure Face ID biometric enrollment",
+    adminOnlyBadge: "Administrator Restricted",
+    tabEmployees: "Staff Directory",
+    tabInvitations: "Active Invitations",
+    tabAudit: "Login & Biometric Audit Trail",
+    inviteBtn: "Invite Employee",
+    testSelfRegister: "Open Self-Registration Link",
+    statsTotal: "Total Employees",
+    statsActive: "Active Users",
+    statsFaceEnrolled: "Face ID Enrolled",
+    statsPendingInvites: "Pending Invites",
+    
+    // Table Headers
+    thEmployee: "Employee",
+    thRole: "Role",
+    thStatus: "Status",
+    thFaceId: "Face ID Biometrics",
+    thRegistered: "Registered",
+    thLastLogin: "Last Login",
+    thActions: "Actions",
+
+    // Statuses
+    statusActive: "Active",
+    statusInvited: "Invited",
+    statusSuspended: "Suspended",
+    statusBlocked: "Blocked",
+
+    // Face ID Badges
+    faceEnrolled: "Enrolled & Active",
+    faceNotEnrolled: "Not Set Up",
+    faceLocked: "Locked (15m)",
+    reEnrollFace: "Reset / Re-enroll Face ID",
+    blockUser: "Block Access",
+    unblockUser: "Unblock Access",
+    deleteUser: "Delete & Purge Biometrics",
+    deleteConfirm: "Are you sure? This will permanently delete the employee account and automatically erase all biometric vector embeddings in accordance with our compliance policy.",
+    
+    // Invitations Tab
+    invitationsTitle: "Single-Use Invitation Links (48-Hour TTL)",
+    invitationsSubtitle: "Invitations automatically invalidate upon successful registration or after 48 hours. Initial opening IP is logged for anti-hijacking audit.",
+    thLink: "Invitation Token & Link",
+    thTarget: "Target Recipient",
+    thRoleAssigned: "Assigned Role",
+    thExpiresIn: "TTL / Expires In",
+    thFirstSeenIp: "Device IP Check",
+    thCreatedBy: "Issued By",
+    thInvStatus: "Status",
+    revokeBtn: "Revoke Link",
+    copyLink: "Copy Link",
+    linkCopied: "Invitation link copied to clipboard!",
+    ipMismatchWarning: "IP Mismatch Flagged",
+    ipMatched: "IP Matched",
+    ipNotOpenedYet: "Not opened yet",
+    statusPending: "Active (Pending)",
+    statusUsed: "Used (Consumed)",
+    statusRevoked: "Revoked by Admin",
+    statusExpired: "Expired (>48h)",
+
+    // Invite Modal
+    modalInviteTitle: "Generate Employee Invitation Link",
+    modalInviteSubtitle: "Select the role for the new team member. A unique single-use token valid for 48 hours will be generated.",
+    formRoleLabel: "Assigned CRM Role",
+    formTargetEmail: "Employee Email (Optional)",
+    formTargetName: "Employee Full Name (Optional)",
+    generateLinkBtn: "Generate Secure 48h Link",
+    generatedLinkReady: "Single-Use Invitation Link Ready:",
+    linkSecurityNotice: "Security Note: This link can only be used once. If opened from one IP address and submitted from another, an audit alert will be raised.",
+    shareEmailBtn: "Simulate Email Dispatch",
+
+    // Face Enrollment & Registration Flow
+    enrollmentTitle: "Accessible Transit CRM • Employee Onboarding",
+    enrollmentSubtitle: "Complete your account registration and set up Face ID biometric authentication",
+    step1Title: "1. Account Credentials",
+    step2Title: "2. Face ID Biometrics & Liveness Verification",
+    step3Title: "3. Completed & Verified",
+    formFullName: "Full Legal Name",
+    formEmail: "Work Email Address",
+    formPhone: "Contact Phone Number",
+    formPassword: "Create Secure Password",
+    formPasswordHint: "Used as a secure backup if camera is unavailable or poorly lit",
+    nextStepBtn: "Continue to Face Verification Setup",
+    
+    // Biometric Consent & Camera
+    consentTitle: "Biometric Data Processing Consent",
+    consentCheckbox: "I explicitly consent to the processing of my biometric data (facial imagery converted into mathematical vector embeddings) for the sole purpose of secure authentication in Accessible Transit CRM. I understand that raw photos are never retained and embeddings are purged upon offboarding.",
+    consentRequiredError: "You must accept the biometric processing consent before accessing the camera.",
+    cameraNotice: "Please ensure you are in a well-lit room and look directly into the camera.",
+    startCameraBtn: "Start Camera & Liveness Check",
+    cameraPermissionDenied: "Camera access was denied or is unavailable. Please check your browser permissions.",
+    livenessPrompt1: "Look directly into the camera",
+    livenessPrompt2: "Blink your eyes naturally...",
+    livenessPrompt3: "Turn your head slightly to the left/right",
+    livenessSuccess: "Liveness & Anti-Spoofing checks passed! Ready for embedding extraction.",
+    captureAndRegisterBtn: "Capture & Complete Face Enrollment",
+    processingBiometrics: "Processing embedding via AWS Rekognition / Azure Face API...",
+    registrationSuccessTitle: "Registration & Face ID Enrollment Complete!",
+    registrationSuccessSubtitle: "Your account is now active with your assigned role. You can log in instantly via Face ID or your secure password.",
+    proceedToLoginBtn: "Enter Accessible Transit CRM",
+
+    // Face Login Dialog / Switcher
+    loginTitle: "Accessible Transit CRM Staff Login",
+    loginSubtitle: "Sign in to Queens Central Dispatch with Face ID or Password Backup",
+    tabFaceId: "Biometric Face ID",
+    tabPassword: "Password Backup",
+    faceScanning: "Align face inside oval for biometric match...",
+    scanNowBtn: "Scan Face & Authenticate",
+    verifyingFace: "Verifying embedding against CRM database...",
+    matchSuccess: "Face Verified! Welcome back.",
+    faceAttemptsRemaining: "Failed attempts: {count}/3. (15-minute lock after 3 failed tries).",
+    faceLockedMsg: "Face ID is temporarily locked for 15 minutes due to multiple failed scans. Please use your password.",
+    fallbackPasswordBtn: "Use Password Backup Instead",
+    passwordLoginBtn: "Log In with Password",
+    loginSuccessRedirect: "Authentication successful. Access granted.",
+    
+    // Profile View (for Non-Admin)
+    myProfileTitle: "My Staff Profile",
+    myProfileSubtitle: "View your active role, security credentials, and biometric authentication status",
+    requestFaceResetBtn: "Request Face ID Re-Enrollment from Administrator",
+    requestSentMsg: "Re-enrollment request submitted to Elena Rostova (Admin)."
   }
 };
 

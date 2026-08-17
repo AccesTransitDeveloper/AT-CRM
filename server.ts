@@ -906,6 +906,214 @@ async function startServer() {
     res.json(logs);
   });
 
+  // =========================================================================
+  // EMPLOYEES & FACE BIOMETRIC AUTHENTICATION API
+  // =========================================================================
+
+  // List all employees (Administrator only)
+  app.get("/api/employees", (req, res) => {
+    const role = (req.headers["x-user-role"] as any) || req.query.role;
+    const employees = db.getEmployees(role);
+    res.json(employees);
+  });
+
+  // Update employee status (Admin action: block/unblock/suspend)
+  app.patch("/api/employees/:id/status", (req, res) => {
+    try {
+      const { status } = req.body;
+      const updated = db.updateEmployeeStatus(req.params.id, status);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ error: err?.message || "Failed to update employee status" });
+    }
+  });
+
+  // Delete employee (Purges all biometric embeddings permanently)
+  app.delete("/api/employees/:id", (req, res) => {
+    try {
+      const result = db.deleteEmployee(req.params.id);
+      res.json(result);
+    } catch (err: any) {
+      res.status(400).json({ error: err?.message || "Failed to delete employee" });
+    }
+  });
+
+  // Reset Face ID for employee (forces re-enrollment)
+  app.post("/api/employees/:id/reset-face", (req, res) => {
+    try {
+      const adminName = req.body.adminName || "Administrator";
+      const updated = db.resetEmployeeFaceId(req.params.id, adminName);
+      res.json({
+        success: true,
+        message: `Face ID reset for ${updated.fullName}. Biometric embeddings purged.`,
+        employee: updated
+      });
+    } catch (err: any) {
+      res.status(400).json({ error: err?.message || "Failed to reset Face ID" });
+    }
+  });
+
+  // List all invitations (Administrator only)
+  app.get("/api/employees/invitations", (req, res) => {
+    const invitations = db.getInvitations();
+    res.json(invitations);
+  });
+
+  // Generate new one-time invitation link (48 Hours TTL)
+  app.post("/api/employees/invitations", (req, res) => {
+    try {
+      const { role, targetEmail, targetFullName, adminName } = req.body;
+      if (!role) {
+        return res.status(400).json({ error: "Employee role is required" });
+      }
+      const invitation = db.createInvitation({
+        role,
+        targetEmail,
+        targetFullName,
+        adminName
+      });
+      res.status(201).json(invitation);
+    } catch (err: any) {
+      res.status(400).json({ error: err?.message || "Failed to create invitation" });
+    }
+  });
+
+  // Revoke invitation
+  app.post("/api/employees/invitations/:id/revoke", (req, res) => {
+    try {
+      const adminName = req.body.adminName || "Administrator";
+      const success = db.revokeInvitation(req.params.id, adminName);
+      if (!success) return res.status(404).json({ error: "Invitation not found" });
+      res.json({ success: true, message: "Invitation revoked successfully" });
+    } catch (err: any) {
+      res.status(400).json({ error: err?.message || "Failed to revoke invitation" });
+    }
+  });
+
+  // Invitation resolution / verification endpoint (tracks first-seen IP)
+  app.get("/api/employees/invite-preview/:token", (req, res) => {
+    const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0] || req.socket.remoteAddress || "198.51.100.42";
+    const userAgent = req.headers["user-agent"] || "Browser";
+    
+    const inv = db.trackInvitationFirstSeen(req.params.token, clientIp, userAgent);
+    if (!inv) {
+      return res.status(404).json({ error: "Invalid invitation link. Link not found." });
+    }
+
+    if (inv.status === 'used') {
+      return res.status(410).json({ error: "This invitation link has already been used.", status: 'used' });
+    }
+
+    if (inv.status === 'revoked') {
+      return res.status(403).json({ error: "This invitation link has been revoked by an administrator.", status: 'revoked' });
+    }
+
+    if (inv.status === 'expired' || new Date(inv.expiresAt) < new Date()) {
+      return res.status(410).json({ error: "This invitation link expired (48-hour limit exceeded).", status: 'expired' });
+    }
+
+    res.json({
+      valid: true,
+      invitation: {
+        id: inv.id,
+        token: inv.token,
+        role: inv.role,
+        expiresAt: inv.expiresAt,
+        targetEmail: inv.targetEmail,
+        targetFullName: inv.targetFullName,
+        firstSeenIp: inv.firstSeenIp,
+        currentIp: clientIp,
+        ipMismatch: inv.firstSeenIp && inv.firstSeenIp !== clientIp
+      }
+    });
+  });
+
+  // Self-Registration endpoint with Face Enrollment
+  app.post("/api/employees/register", (req, res) => {
+    try {
+      const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0] || req.socket.remoteAddress || "198.51.100.55";
+      const userAgent = req.headers["user-agent"] || "Browser";
+
+      const payload = {
+        ...req.body,
+        clientIp,
+        userAgent
+      };
+
+      const result = db.registerEmployeeFromInvite(payload);
+      res.status(201).json(result);
+    } catch (err: any) {
+      console.error("Employee Registration Error:", err);
+      res.status(400).json({ error: err?.message || "Registration failed" });
+    }
+  });
+
+  // Biometric Face ID Login
+  app.post("/api/auth/face-login", (req, res) => {
+    try {
+      const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0] || req.socket.remoteAddress || "198.51.100.60";
+      const userAgent = req.headers["user-agent"] || "Browser";
+
+      const { faceImageBase64, livenessData, targetEmail } = req.body;
+      if (!faceImageBase64) {
+        return res.status(400).json({ error: "Face scan image data is required" });
+      }
+
+      const result = db.verifyFaceLogin({
+        faceImageBase64,
+        livenessData,
+        ip: clientIp,
+        userAgent,
+        targetEmail
+      });
+
+      if (!result.matched) {
+        return res.status(401).json(result);
+      }
+
+      res.json(result);
+    } catch (err: any) {
+      console.error("Face Login Error:", err);
+      res.status(500).json({ error: err?.message || "Biometric authentication failed" });
+    }
+  });
+
+  // Password Login Backup
+  app.post("/api/auth/password-login", (req, res) => {
+    try {
+      const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0] || req.socket.remoteAddress || "198.51.100.60";
+      const userAgent = req.headers["user-agent"] || "Browser";
+
+      const { email, password } = req.body;
+      if (!email || !password) {
+        return res.status(400).json({ error: "Email and password are required" });
+      }
+
+      const result = db.verifyPasswordLogin({
+        email,
+        password,
+        ip: clientIp,
+        userAgent
+      });
+
+      if (!result.success) {
+        return res.status(401).json(result);
+      }
+
+      res.json(result);
+    } catch (err: any) {
+      console.error("Password Login Error:", err);
+      res.status(500).json({ error: err?.message || "Authentication failed" });
+    }
+  });
+
+  // Biometric & Login Audit Trail Logs
+  app.get("/api/auth/login-audit", (req, res) => {
+    const employeeId = req.query.employeeId as string;
+    const logs = db.getEmployeeLoginAuditLogs(employeeId);
+    res.json(logs);
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

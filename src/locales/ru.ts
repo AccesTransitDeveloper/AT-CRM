@@ -76,7 +76,10 @@ export const ru: TranslationKey = {
     compliance: "Комплаенс TLC",
     marketing: "Маркетинг & ИИ",
     appAnalytics: "Аналитика (4 Приложения)",
-    referrals: "Реферальная программа"
+    referrals: "Реферальная программа",
+    employees: "Сотрудники",
+    employeesSub: "Доступ & Face ID",
+    profile: "Мой профиль"
   },
 
   // Driver Fleet Management
@@ -452,5 +455,129 @@ export const ru: TranslationKey = {
     roleDispatcherAccess: "Диспетчерский доступ (только заказы)",
     roleRestricted: "Ограниченный доступ",
     voiceNotSupported: "Голосовой ввод не поддерживается данным браузером."
+  },
+
+  // Employees, Invitations & Biometrics
+  employees: {
+    title: "Управление сотрудниками и доступом",
+    subtitle: "Список команды CRM, одноразовые ссылки-приглашения с фиксацией IP и биометрический вход Face ID через AWS Rekognition / Azure Face API",
+    adminOnlyBadge: "Только для Администратора",
+    tabEmployees: "Список сотрудников",
+    tabInvitations: "Активные приглашения",
+    tabAudit: "Журнал входов и Face ID",
+    inviteBtn: "Пригласить сотрудника",
+    testSelfRegister: "Открыть форму саморегистрации",
+    statsTotal: "Всего сотрудников",
+    statsActive: "Активных учетных записей",
+    statsFaceEnrolled: "Face ID настроен",
+    statsPendingInvites: "Ожидающих приглашений",
+    
+    // Table Headers
+    thEmployee: "Сотрудник",
+    thRole: "Роль в CRM",
+    thStatus: "Статус",
+    thFaceId: "Биометрия Face ID",
+    thRegistered: "Дата регистрации",
+    thLastLogin: "Последний вход",
+    thActions: "Действия",
+
+    // Statuses
+    statusActive: "Активен",
+    statusInvited: "Приглашён",
+    statusSuspended: "Приостановлен",
+    statusBlocked: "Заблокирован",
+
+    // Face ID Badges
+    faceEnrolled: "Настроен (Активен)",
+    faceNotEnrolled: "Не настроен",
+    faceLocked: "Заблокирован (15 мин)",
+    reEnrollFace: "Сбросить / Пересдать Face ID",
+    blockUser: "Заблокировать доступ",
+    unblockUser: "Разблокировать",
+    deleteUser: "Удалить и стереть биометрию",
+    deleteConfirm: "Вы уверены? Аккаунт будет удален, а числовые embedding-векторы лица будут автоматически стёрты из базы в строгом соответствии с политикой конфиденциальности.",
+    
+    // Invitations Tab
+    invitationsTitle: "Одноразовые ссылки-приглашения (срок 48 часов)",
+    invitationsSubtitle: "Ссылка автоматически аннулируется после первого использования или через 48 часов. Первичный IP устройства фиксируется для защиты от перехвата.",
+    thLink: "Токен и ссылка",
+    thTarget: "Кому предназначена",
+    thRoleAssigned: "Назначаемая роль",
+    thExpiresIn: "Срок действия (TTL)",
+    thFirstSeenIp: "Проверка IP устройства",
+    thCreatedBy: "Кем выдана",
+    thInvStatus: "Статус ссылки",
+    revokeBtn: "Отозвать ссылку",
+    copyLink: "Копировать ссылку",
+    linkCopied: "Ссылка-приглашение скопирована в буфер обмена!",
+    ipMismatchWarning: "Внимание: сменился IP",
+    ipMatched: "IP совпадает",
+    ipNotOpenedYet: "Ещё не открывалась",
+    statusPending: "Активна (Ожидает)",
+    statusUsed: "Использована",
+    statusRevoked: "Отозвана админом",
+    statusExpired: "Протухла (>48ч)",
+
+    // Invite Modal
+    modalInviteTitle: "Генерация ссылки-приглашения для сотрудника",
+    modalInviteSubtitle: "Выберите роль для нового члена команды. Будет сгенерирован одноразовый защищенный токен со сроком действия 48 часов.",
+    formRoleLabel: "Роль в системе CRM",
+    formTargetEmail: "Email сотрудника (необязательно)",
+    formTargetName: "ФИО сотрудника (необязательно)",
+    generateLinkBtn: "Сгенерировать защищенную 48ч ссылку",
+    generatedLinkReady: "Одноразовая ссылка-приглашение создана:",
+    linkSecurityNotice: "Безопасность: Ссылка может быть использована только 1 раз. При регистрации система зафиксирует IP устройства и предупредит администратора при несовпадении.",
+    shareEmailBtn: "Имитировать отправку по Email",
+
+    // Face Enrollment & Registration Flow
+    enrollmentTitle: "Accessible Transit CRM • Регистрация сотрудника",
+    enrollmentSubtitle: "Заполните персональные данные и пройдите биометрическую настройку Face ID",
+    step1Title: "1. Учётные данные сотрудника",
+    step2Title: "2. Настройка Face ID и проверка живости (Liveness)",
+    step3Title: "3. Завершение и активация",
+    formFullName: "ФИО (Полное имя)",
+    formEmail: "Рабочий Email",
+    formPhone: "Контактный телефон",
+    formPassword: "Придумайте пароль",
+    formPasswordHint: "Пароль используется как резервный способ входа при проблемах с камерой или освещением",
+    nextStepBtn: "Перейти к Face Verification Setup",
+    
+    // Biometric Consent & Camera
+    consentTitle: "Согласие на обработку биометрических данных",
+    consentCheckbox: "Я согласен на обработку биометрических данных (изображение лица) для целей аутентификации в системе AT CRM. Я проинформирован, что само фото в базе не хранится, а сохраняется лишь числовой embedding лица от сервиса распознавания, который автоматически удаляется при увольнении.",
+    consentRequiredError: "Необходимо подтвердить согласие на обработку биометрии для перехода к камере.",
+    cameraNotice: "Убедитесь, что ваше лицо хорошо освещено, и посмотрите прямо в камеру.",
+    startCameraBtn: "Включить камеру и начать проверку",
+    cameraPermissionDenied: "Доступ к камере отклонен или устройство недоступно. Разрешите доступ к камере в браузере.",
+    livenessPrompt1: "Посмотрите прямо в камеру",
+    livenessPrompt2: "Моргните глазами...",
+    livenessPrompt3: "Слегка поверните голову влево/вправо",
+    livenessSuccess: "Проверка на живость (Liveness) успешно пройдена! Готово к созданию embedding.",
+    captureAndRegisterBtn: "Сделать снимок и завершить Face ID",
+    processingBiometrics: "Обработка биометрии через AWS Rekognition / Azure Face API...",
+    registrationSuccessTitle: "Регистрация и Face ID успешно завершены!",
+    registrationSuccessSubtitle: "Ваш аккаунт активирован с назначенной ролью. Теперь вы можете мгновенно входить по Face ID или использовать пароль.",
+    proceedToLoginBtn: "Войти в систему AT CRM",
+
+    // Face Login Dialog / Switcher
+    loginTitle: "Вход в систему Accessible Transit CRM",
+    loginSubtitle: "Авторизация в Queens Central Dispatch по Face ID или резервному паролю",
+    tabFaceId: "Вход по лицу (Face ID)",
+    tabPassword: "Вход по паролю",
+    faceScanning: "Поместите лицо в контур овала для распознавания...",
+    scanNowBtn: "Распознать лицо и войти",
+    verifyingFace: "Сравнение биометрического embedding с базой CRM...",
+    matchSuccess: "Лицо подтверждено! Добро пожаловать.",
+    faceAttemptsRemaining: "Неудачных попыток: {count}/3. (После 3 попыток — блокировка Face ID на 15 минут).",
+    faceLockedMsg: "Вход по Face ID временно заблокирован на 15 минут из-за 3 несовпадений. Войдите по паролю.",
+    fallbackPasswordBtn: "Войти по резервному паролю",
+    passwordLoginBtn: "Войти по паролю",
+    loginSuccessRedirect: "Вход выполнен успешно. Перенаправление...",
+    
+    // Profile View (for Non-Admin)
+    myProfileTitle: "Личный профиль сотрудника",
+    myProfileSubtitle: "Просмотр назначенной роли, параметров безопасности и статуса биометрии Face ID",
+    requestFaceResetBtn: "Запросить пересдачу Face ID у Администратора",
+    requestSentMsg: "Запрос на пересдачу Face ID отправлен администратору Elena Rostova."
   }
 };

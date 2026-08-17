@@ -1,6 +1,6 @@
 import React from 'react';
 import { UserRole, ActiveTab } from '../types';
-import { Users, Navigation as NavIcon, Building2, Headphones, DollarSign, Terminal, Sparkles, ShieldCheck, Smartphone, Share2 } from 'lucide-react';
+import { Users, Navigation as NavIcon, Building2, Headphones, DollarSign, Terminal, Sparkles, ShieldCheck, Smartphone, Share2, UserCheck, User } from 'lucide-react';
 import { useTranslation } from '../lib/i18n';
 
 export type { ActiveTab };
@@ -15,6 +15,7 @@ interface NavigationProps {
     openTickets: number;
     pendingComplianceDocs?: number;
     expiringComplianceDocs?: number;
+    pendingInvitations?: number;
   };
 }
 
@@ -70,6 +71,25 @@ export const Navigation: React.FC<NavigationProps> = ({
       sublabel: t('nav.financeSub'),
       icon: <DollarSign className="w-4 h-4" />
     },
+    ...(currentRole === 'admin'
+      ? [
+          {
+            id: 'employees' as ActiveTab,
+            label: t('nav.employees'),
+            sublabel: t('nav.employeesSub'),
+            icon: <UserCheck className="w-4 h-4 text-emerald-400" />,
+            badge: counts.pendingInvitations,
+            badgeColor: 'bg-emerald-500 text-white'
+          }
+        ]
+      : [
+          {
+            id: 'profile' as ActiveTab,
+            label: t('nav.profile'),
+            sublabel: t('roles.' + currentRole + '.badge'),
+            icon: <User className="w-4 h-4 text-sky-400" />
+          }
+        ]),
     {
       id: 'api',
       label: t('nav.api'),

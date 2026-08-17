@@ -13,9 +13,13 @@ import { ComplianceView } from './components/compliance/ComplianceView';
 import { AppAnalyticsView } from './components/analytics/AppAnalyticsView';
 import { ReferralProgramDashboard } from './components/referrals/ReferralProgramDashboard';
 import { ApiExplorerView } from './components/api-explorer/ApiExplorerView';
+import { EmployeesView } from './components/employees/EmployeesView';
+import { EmployeeProfileView } from './components/employees/EmployeeProfileView';
+import { FaceLoginModal } from './components/auth/FaceLoginModal';
+import { SelfRegistrationModal } from './components/employees/SelfRegistrationModal';
 import { AiAssistantPanel } from './components/AiAssistantPanel';
 import { initialDrivers, initialOrders, initialBrokers, initialTickets, sampleSettlements } from '../server/db';
-import { Shield, Sparkles, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Shield, Sparkles, CheckCircle2, AlertCircle, Camera } from 'lucide-react';
 import { useTranslation } from './lib/i18n';
 
 export default function App() {
@@ -31,7 +35,12 @@ export default function App() {
   const [brokers, setBrokers] = useState<Broker[]>(initialBrokers);
   const [tickets, setTickets] = useState<Ticket[]>(initialTickets);
   const [settlements, setSettlements] = useState<CommissionSettlement[]>(sampleSettlements);
+  const [pendingInvitationsCount, setPendingInvitationsCount] = useState(2);
   
+  // Modals for Face Login & URL Invitation Link Detection
+  const [isFaceLoginModalOpen, setIsFaceLoginModalOpen] = useState(false);
+  const [activeInviteToken, setActiveInviteToken] = useState<string | null>(null);
+
   // AI Agent (Jarvis) Drawer & Activation States
   const [isAiAgentOpen, setIsAiAgentOpen] = useState(false);
   const [isAiAgentActive, setIsAiAgentActive] = useState(true);
@@ -45,6 +54,19 @@ export default function App() {
       setNotification(null);
     }, 4000);
   };
+
+  // Check URL params for ?invite=token or ?role=...
+  useEffect(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const inviteToken = urlParams.get('invite') || urlParams.get('token');
+      if (inviteToken) {
+        setActiveInviteToken(inviteToken);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
 
   // Fetch all state from REST backend
   const loadData = useCallback(async () => {
@@ -365,6 +387,7 @@ export default function App() {
         onToggleAiAgentOpen={() => setIsAiAgentOpen(prev => !prev)}
         isAiAgentActive={isAiAgentActive}
         onToggleAiAgentActive={setIsAiAgentActive}
+        onOpenFaceLogin={() => setIsFaceLoginModalOpen(true)}
       />
 
       {/* Module Navigation Tabs */}
@@ -377,7 +400,8 @@ export default function App() {
           activeOrders: activeOrdersCount,
           openTickets: openTicketsCount,
           pendingComplianceDocs: stats?.pendingComplianceDocs || 0,
-          expiringComplianceDocs: stats?.expiringComplianceDocs || 0
+          expiringComplianceDocs: stats?.expiringComplianceDocs || 0,
+          pendingInvitations: pendingInvitationsCount
         }}
       />
 
@@ -429,7 +453,6 @@ export default function App() {
           />
         )}
 
-
         {activeTab === 'orders' && (
           <OrdersView
             orders={orders}
@@ -469,6 +492,20 @@ export default function App() {
             settlements={settlements}
             currentRole={currentRole}
             onUpdateSettlementStatus={handleUpdateSettlementStatus}
+          />
+        )}
+
+        {activeTab === 'employees' && currentRole === 'admin' && (
+          <EmployeesView
+            currentRole={currentRole}
+            onOpenSelfRegisterWithToken={(token) => setActiveInviteToken(token)}
+          />
+        )}
+
+        {(activeTab === 'profile' || (activeTab === 'employees' && currentRole !== 'admin')) && (
+          <EmployeeProfileView
+            currentRole={currentRole}
+            onOpenFaceLogin={() => setIsFaceLoginModalOpen(true)}
           />
         )}
 
@@ -514,6 +551,34 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* Face ID Login Modal */}
+      <FaceLoginModal
+        isOpen={isFaceLoginModalOpen}
+        onClose={() => setIsFaceLoginModalOpen(false)}
+        onLoginSuccess={(employee, role) => {
+          setCurrentRole(role);
+          showToast(`Authenticated as ${employee.fullName} (${role.toUpperCase()}) via Biometric Face ID!`, 'success');
+        }}
+      />
+
+      {/* Self Registration with Invitation Link Modal */}
+      <SelfRegistrationModal
+        isOpen={!!activeInviteToken}
+        token={activeInviteToken}
+        onClose={() => {
+          setActiveInviteToken(null);
+          // Clean URL parameter
+          if (window.history.replaceState) {
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
+        }}
+        onRegistrationComplete={(employee) => {
+          setCurrentRole(employee.role);
+          showToast(`Welcome ${employee.fullName}! Your account and Face ID biometrics are now active.`, 'success');
+          loadData();
+        }}
+      />
 
       {/* Internal AI Assistant (Jarvis) Drawer */}
       <AiAssistantPanel
