@@ -46,7 +46,7 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleAiAgentActive,
   onOpenFaceLogin
 }) => {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
 
   const getRoleInfo = (role: UserRole) => {
     return {
@@ -60,90 +60,113 @@ export const Header: React.FC<HeaderProps> = ({
   const currentRoleInfo = getRoleInfo(currentRole);
 
   return (
-    <header className="bg-slate-900 border-b border-slate-800 text-white sticky top-0 z-40 shadow-md">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          {/* Logo and branding */}
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-sky-500 to-blue-700 flex items-center justify-center shadow-inner font-bold text-lg text-white border border-sky-400/30">
+    <header className="bg-slate-900/95 border-b border-slate-800/90 text-white sticky top-0 z-40 backdrop-blur-md shadow-lg shadow-black/20">
+      <div className="w-full px-3 sm:px-5 lg:px-7">
+        <div className="flex items-center justify-between min-h-[64px] py-2 gap-3 flex-wrap lg:flex-nowrap">
+          {/* Left: Logo and branding */}
+          <div className="flex items-center space-x-3 shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 via-sky-600 to-indigo-700 flex items-center justify-center shadow-md shadow-sky-600/20 font-black text-lg text-white border border-sky-400/40 tracking-wider">
               AT
             </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <span className="font-bold text-lg tracking-tight text-white">Accessible Transit</span>
-                <span className="text-xs bg-sky-500/20 text-sky-300 px-2 py-0.5 rounded font-mono border border-sky-500/30">CRM</span>
-                <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-medium border border-emerald-500/30 flex items-center gap-1">
+            <div className="flex flex-col justify-center">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-base sm:text-lg tracking-tight text-white leading-snug">
+                  {language === 'ru' ? 'Доступный Транспорт' : 'Accessible Transit'}
+                </span>
+                <span className="text-[10px] uppercase font-bold tracking-wider bg-sky-500/20 text-sky-300 px-1.5 py-0.5 rounded-md font-mono border border-sky-500/30">
+                  CRM
+                </span>
+                <span className="hidden md:inline-flex items-center gap-1.5 text-[10px] font-semibold bg-emerald-500/15 text-emerald-300 px-2 py-0.5 rounded-md border border-emerald-500/30">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                  {t('header.hubLocation')}
+                  NYC Paratransit
                 </span>
               </div>
-              <p className="text-xs text-slate-400">
-                {t('header.subHeader')}
+              <p className="text-[11px] text-slate-400 leading-tight hidden sm:block">
+                Queens • Brooklyn • Bronx • Manhattan • Staten Island | MTA 15%
               </p>
             </div>
           </div>
 
-          {/* Key Live Status Counters */}
-          <div className="hidden lg:flex items-center space-x-6 text-xs text-slate-300">
-            <div className="flex items-center space-x-2 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700/60">
-              <Car className="w-4 h-4 text-emerald-400" />
-              <div>
-                <div className="text-[10px] text-slate-400 uppercase tracking-wider">{t('header.activeDrivers')}</div>
-                <span className="font-bold text-white text-sm">{stats ? stats.activeDrivers : 3}</span>
-                <span className="text-slate-400 text-xs"> / {stats ? stats.totalDrivers : 6} {t('header.fleet')}</span>
+          {/* Center: Live Real-Time Telemetry HUD Chips */}
+          <div className="hidden xl:flex items-center space-x-2 text-xs text-slate-300">
+            {/* Drivers HUD */}
+            <div className="flex items-center gap-2 bg-slate-800/80 hover:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700/60 shadow-xs transition-colors">
+              <div className="w-7 h-7 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center border border-emerald-500/20">
+                <Car className="w-3.5 h-3.5" />
+              </div>
+              <div className="leading-tight">
+                <div className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">{t('header.activeDrivers')}</div>
+                <div className="text-xs font-bold text-white flex items-center gap-1">
+                  <span className="text-emerald-400">{stats ? stats.activeDrivers : 3}</span>
+                  <span className="text-slate-500 font-normal">/ {stats ? stats.totalDrivers : 6}</span>
+                </div>
               </div>
             </div>
 
-            <div className="flex items-center space-x-2 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700/60">
-              <Radio className="w-4 h-4 text-sky-400 animate-pulse" />
-              <div>
-                <div className="text-[10px] text-slate-400 uppercase tracking-wider">{t('header.activeOrders')}</div>
-                <span className="font-bold text-white text-sm">{stats ? stats.activeOrdersNow : 4}</span>
-                <span className="text-slate-400 text-xs"> {t('header.inDispatch')}</span>
+            {/* Orders HUD */}
+            <div className="flex items-center gap-2 bg-slate-800/80 hover:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700/60 shadow-xs transition-colors">
+              <div className="w-7 h-7 rounded-lg bg-sky-500/15 text-sky-400 flex items-center justify-center border border-sky-500/20">
+                <Radio className="w-3.5 h-3.5 animate-pulse" />
+              </div>
+              <div className="leading-tight">
+                <div className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">{t('header.activeOrders')}</div>
+                <div className="text-xs font-bold text-white flex items-center gap-1">
+                  <span className="text-sky-400">{stats ? stats.activeOrdersNow : 4}</span>
+                  <span className="text-slate-500 font-normal">{language === 'ru' ? 'в рейсе' : 'active'}</span>
+                </div>
               </div>
             </div>
 
-            <div className="flex items-center space-x-2 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700/60">
-              <DollarSign className="w-4 h-4 text-amber-400" />
-              <div>
-                <div className="text-[10px] text-slate-400 uppercase tracking-wider">{t('header.atCommission')}</div>
-                <span className="font-bold text-emerald-400 text-sm">
-                  ${stats ? stats.atCommissionToday.toFixed(2) : '41.26'}
-                </span>
+            {/* Margin HUD */}
+            <div className="flex items-center gap-2 bg-slate-800/80 hover:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700/60 shadow-xs transition-colors">
+              <div className="w-7 h-7 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center border border-amber-500/20">
+                <DollarSign className="w-3.5 h-3.5" />
+              </div>
+              <div className="leading-tight">
+                <div className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">15% AT Comm</div>
+                <div className="text-xs font-bold text-emerald-400 font-mono">
+                  ${stats ? stats.atCommissionToday.toFixed(2) : '1,690.09'}
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Controls: Refresh, Language Switcher, Role Selector & AI Agent */}
-          <div className="flex items-center space-x-2.5">
+          {/* Right: Controls (Refresh, Language, Role Selector, Face ID, Jarvis AI) */}
+          <div className="flex items-center space-x-2 shrink-0 ml-auto lg:ml-0">
+            {/* Refresh */}
             <button
+              type="button"
               onClick={onRefresh}
               title={t('header.refreshData')}
               disabled={isLoading}
-              className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors border border-slate-700 flex items-center justify-center text-xs"
+              className="p-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white transition-all border border-slate-700/80 flex items-center justify-center"
             >
-              <Clock className={`w-4 h-4 ${isLoading ? 'animate-spin text-sky-400' : ''}`} />
+              <Clock className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-sky-400' : ''}`} />
             </button>
 
             {/* Language Switcher (RU / EN) */}
             <LanguageSwitch />
 
-            {/* Role dropdown */}
+            {/* Role Dropdown */}
             <div className="relative group">
-              <div className="flex items-center space-x-2 bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700 cursor-pointer hover:border-slate-600 transition-all">
-                <Shield className="w-4 h-4 text-sky-400" />
-                <div className="text-left">
-                  <div className="text-[10px] text-slate-400 uppercase leading-none">{t('header.loggedInAs')}</div>
-                  <div className="text-xs font-semibold text-white flex items-center gap-1">
-                    {currentRoleInfo.label}
-                    <ChevronDown className="w-3 h-3 text-slate-400" />
+              <button
+                type="button"
+                className="flex items-center space-x-2 bg-slate-800/90 hover:bg-slate-750 px-2.5 sm:px-3 py-1.5 rounded-xl border border-slate-700/80 cursor-pointer hover:border-slate-600 transition-all text-xs"
+              >
+                <Shield className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                <div className="text-left leading-none hidden sm:block">
+                  <div className="text-[9px] text-slate-400 uppercase tracking-wider">{t('header.loggedInAs')}</div>
+                  <div className="text-xs font-semibold text-white mt-0.5 flex items-center gap-1">
+                    <span>{currentRoleInfo.label}</span>
+                    <ChevronDown className="w-3 h-3 text-slate-400 group-hover:rotate-180 transition-transform duration-200" />
                   </div>
                 </div>
-              </div>
+                <ChevronDown className="w-3 h-3 text-slate-400 sm:hidden" />
+              </button>
 
               {/* Dropdown Menu */}
-              <div className="absolute right-0 mt-1 w-72 bg-slate-800 rounded-xl shadow-2xl border border-slate-700 p-2 hidden group-hover:block hover:block z-50">
-                <div className="px-2 py-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-700 mb-1">
+              <div className="absolute right-0 mt-1.5 w-72 bg-slate-800/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-slate-700/90 p-2 hidden group-hover:block hover:block z-50 animate-in fade-in slide-in-from-top-1 duration-150">
+                <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-700/60 mb-1.5">
                   {t('header.switchActiveRole')}
                 </div>
                 {(['admin', 'driver_manager', 'dispatcher', 'support', 'finance'] as UserRole[]).map((role) => {
@@ -152,32 +175,34 @@ export const Header: React.FC<HeaderProps> = ({
                   return (
                     <button
                       key={role}
+                      type="button"
                       onClick={() => onRoleChange(role)}
-                      className={`w-full text-left p-2 rounded-lg text-xs transition-colors flex flex-col mb-1 ${
+                      className={`w-full text-left p-2 rounded-xl text-xs transition-all flex flex-col mb-1 ${
                         isCurrent
-                          ? 'bg-sky-500/20 text-sky-200 border border-sky-500/40'
+                          ? 'bg-sky-500/20 text-sky-200 border border-sky-500/40 shadow-xs'
                           : 'hover:bg-slate-700/60 text-slate-300'
                       }`}
                     >
                       <div className="flex items-center justify-between font-semibold">
                         <span>{item.label}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-900/60 text-slate-400 border border-slate-700">
+                        <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-slate-900/80 text-slate-400 border border-slate-700/60">
                           {item.badge}
                         </span>
                       </div>
-                      <span className="text-[11px] text-slate-400 mt-0.5 line-clamp-1">{item.description}</span>
+                      <span className="text-[10px] text-slate-400 mt-0.5 line-clamp-1">{item.description}</span>
                     </button>
                   );
                 })}
 
                 {onOpenFaceLogin && (
-                  <div className="pt-2 mt-1 border-t border-slate-700">
+                  <div className="pt-2 mt-1.5 border-t border-slate-700/80">
                     <button
+                      type="button"
                       onClick={onOpenFaceLogin}
-                      className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-500 hover:to-sky-500 text-white rounded-lg text-xs font-semibold shadow-md shadow-indigo-600/20 transition-all"
+                      className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-500 hover:to-sky-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-indigo-600/20 transition-all"
                     >
                       <Camera className="w-3.5 h-3.5" />
-                      <span>Face ID Authentication</span>
+                      <span>{language === 'ru' ? 'Биометрия Face ID' : 'Face ID Authentication'}</span>
                     </button>
                   </div>
                 )}
@@ -189,18 +214,19 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={onOpenFaceLogin}
-                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-950/70 hover:bg-indigo-900/90 text-indigo-300 border border-indigo-500/40 rounded-lg text-xs font-semibold shadow-sm transition-all"
-                title="Sign in with Face ID / Switch User"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border border-indigo-500/40 rounded-xl text-xs font-semibold shadow-xs transition-all"
+                title="Face ID Login / Biometrics"
               >
                 <Camera className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Face ID</span>
+                <span className="hidden sm:inline">Face ID</span>
               </button>
             )}
 
-            {/* AI Assistant (Jarvis) Trigger & Activation Switch */}
-            <div className="flex items-center space-x-1.5 bg-slate-800/90 pl-2 pr-1.5 py-1 rounded-lg border border-slate-700">
+            {/* AI Assistant (Jarvis) Switch & Button */}
+            <div className="flex items-center space-x-1.5 bg-slate-800/90 pl-2 pr-1 py-1 rounded-xl border border-slate-700/80 shadow-xs">
               {/* Quick toggle switch */}
               <button
+                type="button"
                 onClick={() => onToggleAiAgentActive(!isAiAgentActive)}
                 className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors focus:outline-hidden ${
                   isAiAgentActive ? 'bg-emerald-500' : 'bg-slate-600'
@@ -217,8 +243,9 @@ export const Header: React.FC<HeaderProps> = ({
 
               {/* Agent Trigger Button */}
               <button
+                type="button"
                 onClick={onToggleAiAgentOpen}
-                className={`flex items-center space-x-1.5 px-2 py-1 rounded-md text-xs font-semibold transition-all relative ${
+                className={`flex items-center space-x-1.5 px-2 py-1 rounded-lg text-xs font-semibold transition-all relative ${
                   isAiAgentActive
                     ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/40 shadow-xs shadow-emerald-500/20'
                     : 'bg-slate-700/50 text-slate-400 hover:bg-slate-700 hover:text-slate-200 border border-slate-600/40'
@@ -235,7 +262,7 @@ export const Header: React.FC<HeaderProps> = ({
                     </span>
                   )}
                 </div>
-                <span>{t('aiAgent.headerBadge')}</span>
+                <span className="hidden sm:inline">{t('aiAgent.headerBadge')}</span>
               </button>
             </div>
           </div>

@@ -407,23 +407,24 @@ export default function App() {
 
 
       {/* Active Role Notice Bar */}
-      <div className="bg-slate-900/40 border-b border-slate-800/80 px-4 sm:px-6 lg:px-8 py-1.5 text-xs text-slate-400">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
+      <div className="bg-slate-900/40 border-b border-slate-800/70 px-3 sm:px-5 lg:px-7 py-1.5 text-xs text-slate-400">
+        <div className="w-full flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center space-x-2">
-            <span className="font-semibold text-slate-300">{t('workspace.activeWorkspace')}</span>
-            <span className={`px-2 py-0.5 rounded text-[11px] font-medium border ${roleStyleConfig[currentRole].color}`}>
+            <span className="font-semibold text-slate-300 text-xs">{t('workspace.activeWorkspace')}</span>
+            <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border ${roleStyleConfig[currentRole].color}`}>
               {t(`roles.${currentRole}.label`)}
             </span>
-            <span className="text-slate-500 hidden sm:inline">•</span>
-            <span className="text-slate-400 hidden sm:inline">{t(`roles.${currentRole}.description`)}</span>
+            <span className="text-slate-600 hidden sm:inline">•</span>
+            <span className="text-slate-400 text-xs hidden sm:inline">{t(`roles.${currentRole}.description`)}</span>
           </div>
 
           <div className="flex items-center space-x-3 text-[11px] text-slate-400">
-            <span className="flex items-center gap-1 text-emerald-400">
-              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
               {t('workspace.fleetOnline')}
             </span>
-            <span>{t('workspace.brokerageRate')}</span>
+            <span className="text-slate-600 hidden sm:inline">•</span>
+            <span className="text-slate-300 font-mono text-[11px]">{t('workspace.brokerageRate')}</span>
           </div>
         </div>
       </div>
