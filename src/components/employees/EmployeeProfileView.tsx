@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserRole, Employee, EmployeeLoginAuditLog } from '../../types';
 import { useTranslation } from '../../lib/i18n';
+import { safeFetchJson } from '../../lib/api';
 import { 
   User, 
   ShieldCheck, 
@@ -41,17 +42,20 @@ export const EmployeeProfileView: React.FC<EmployeeProfileViewProps> = ({
   const [consentSuccessMsg, setConsentSuccessMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    // Fetch employee data
-    fetch('/api/employees')
-      .then(res => res.json())
-      .then((employees: Employee[]) => {
-        const found = employees.find(e => e.role === currentRole) || employees[0];
-        if (found) {
-          setProfile(found);
-          fetch(`/api/auth/login-audit?employeeId=${found.id}`)
-            .then(r => r.json())
-            .then(logs => setAuditLogs(logs))
-            .catch(() => {});
+    // Fetch employee data safely
+    safeFetchJson<Employee[]>('/api/employees')
+      .then(result => {
+        if (result.ok && Array.isArray(result.data)) {
+          const found = result.data.find(e => e.role === currentRole) || result.data[0];
+          if (found) {
+            setProfile(found);
+            safeFetchJson<EmployeeLoginAuditLog[]>(`/api/auth/login-audit?employeeId=${found.id}`)
+              .then(audResult => {
+                if (audResult.ok && Array.isArray(audResult.data)) {
+                  setAuditLogs(audResult.data);
+                }
+              });
+          }
         }
       })
       .catch(err => console.error('Profile fetch error:', err));

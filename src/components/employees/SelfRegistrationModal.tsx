@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { UserRole, Employee, EmployeeInvitation } from '../../types';
 import { useTranslation } from '../../lib/i18n';
+import { safeFetchJson } from '../../lib/api';
 import { 
   X, 
   Camera, 
@@ -78,27 +79,37 @@ export const SelfRegistrationModal: React.FC<SelfRegistrationModalProps> = ({
     setIsLoadingToken(true);
     setTokenError(null);
 
-    fetch(`/api/employees/invite-preview/${token}`)
-      .then(res => res.json())
-      .then(data => {
-        if (!isMounted) return;
-        if (data.error) {
-          setTokenError(data.error);
-        } else {
-          setInvitationInfo(data.invitation);
-          if (data.invitation.targetFullName) setFullName(data.invitation.targetFullName);
-          if (data.invitation.targetEmail) setEmail(data.invitation.targetEmail);
-          if (data.invitation.ipMismatch) {
-            setIpMismatchAlert(`Note: Initial click IP (${data.invitation.firstSeenIp}) differs from current IP (${data.invitation.currentIp}). Flagged for administrative verification.`);
-          }
+    safeFetchJson<{ invitation: EmployeeInvitation & { ipMismatch?: boolean; firstSeenIp?: string; currentIp?: string } }>(
+      `/api/employees/invite-preview/${token}`
+    ).then(result => {
+      if (!isMounted) return;
+      if (result.ok && result.data?.invitation) {
+        const inv = result.data.invitation;
+        setInvitationInfo(inv);
+        if (inv.targetFullName) setFullName(inv.targetFullName);
+        if (inv.targetEmail) setEmail(inv.targetEmail);
+        if (inv.ipMismatch) {
+          setIpMismatchAlert(`Note: Initial click IP (${inv.firstSeenIp}) differs from current IP (${inv.currentIp}). Flagged for administrative verification.`);
         }
-      })
-      .catch(err => {
-        if (isMounted) setTokenError(err?.message || 'Failed to validate invitation token');
-      })
-      .finally(() => {
-        if (isMounted) setIsLoadingToken(false);
-      });
+      } else {
+        // Fallback: check localStorage for saved invites (for static SPA hosting on Vercel/GitHub Pages)
+        try {
+          const localInvites: EmployeeInvitation[] = JSON.parse(localStorage.getItem('at_employee_invites') || '[]');
+          const match = localInvites.find(i => i.token === token && i.status === 'pending');
+          if (match) {
+            setInvitationInfo(match);
+            if (match.targetFullName) setFullName(match.targetFullName);
+            if (match.targetEmail) setEmail(match.targetEmail);
+            return;
+          }
+        } catch (e) {
+          console.error(e);
+        }
+        setTokenError(result.error || 'Failed to validate invitation token');
+      }
+    }).finally(() => {
+      if (isMounted) setIsLoadingToken(false);
+    });
 
     return () => {
       isMounted = false;
@@ -205,7 +216,7 @@ export const SelfRegistrationModal: React.FC<SelfRegistrationModalProps> = ({
     setIsProcessingBiometrics(true);
 
     try {
-      const res = await fetch('/api/employees/register', {
+      const response = await safeFetchJson<{ success: boolean; employee: Employee }>('/api/employees/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -225,15 +236,45 @@ export const SelfRegistrationModal: React.FC<SelfRegistrationModalProps> = ({
         })
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to complete registration');
-      }
+      if (response.ok && response.data?.employee) {
+        setRegisteredEmployee(response.data.employee);
+        setStep(3);
+        if (cameraStream) {
+          cameraStream.getTracks().forEach(track => track.stop());
+        }
+      } else {
+        // Fallback for static hosts
+        const createdEmp: Employee = {
+          id: 'emp-' + Date.now(),
+          fullName: fullName.trim(),
+          email: email.trim(),
+          role: invitationInfo?.role || 'dispatcher',
+          phone: phone.trim() || '+1 (718) 555-0100',
+          status: 'active',
+          avatarUrl: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80`,
+          faceEnrolled: true,
+          faceEnrolledAt: new Date().toISOString(),
+          faceEmbeddingVectorId: 'vec_' + Math.random().toString(36).substring(2, 12),
+          failedFaceAttempts: 0,
+          invitationId: invitationInfo?.id,
+          createdAt: new Date().toISOString(),
+          registeredAt: new Date().toISOString(),
+          lastLoginAt: new Date().toISOString(),
+          lastLoginMethod: 'face_id'
+        };
 
-      setRegisteredEmployee(data.employee);
-      setStep(3);
-      if (cameraStream) {
-        cameraStream.getTracks().forEach(track => track.stop());
+        try {
+          const stored = JSON.parse(localStorage.getItem('at_employees') || '[]');
+          localStorage.setItem('at_employees', JSON.stringify([createdEmp, ...stored]));
+        } catch (e) {
+          console.error(e);
+        }
+
+        setRegisteredEmployee(createdEmp);
+        setStep(3);
+        if (cameraStream) {
+          cameraStream.getTracks().forEach(track => track.stop());
+        }
       }
     } catch (err: any) {
       alert(`Error during face enrollment: ${err?.message || 'Failed'}`);

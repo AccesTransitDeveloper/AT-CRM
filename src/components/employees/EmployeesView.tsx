@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Employee, EmployeeInvitation, EmployeeLoginAuditLog, UserRole } from '../../types';
 import { useTranslation } from '../../lib/i18n';
+import { safeFetchJson } from '../../lib/api';
 import { 
   Users, 
   UserPlus, 
@@ -64,14 +65,37 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
     setIsLoading(true);
     try {
       const [empRes, invRes, audRes] = await Promise.all([
-        fetch('/api/employees?role=admin'),
-        fetch('/api/employees/invitations'),
-        fetch('/api/auth/login-audit')
+        safeFetchJson<Employee[]>('/api/employees?role=admin'),
+        safeFetchJson<EmployeeInvitation[]>('/api/employees/invitations'),
+        safeFetchJson<EmployeeLoginAuditLog[]>('/api/auth/login-audit')
       ]);
 
-      if (empRes.ok) setEmployees(await empRes.json());
-      if (invRes.ok) setInvitations(await invRes.json());
-      if (audRes.ok) setAuditLogs(await audRes.json());
+      if (empRes.ok && Array.isArray(empRes.data)) {
+        setEmployees(empRes.data);
+      } else {
+        // Fallback from localStorage or initial defaults
+        try {
+          const localEmps = JSON.parse(localStorage.getItem('at_employees') || '[]');
+          if (localEmps.length > 0) setEmployees(localEmps);
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      if (invRes.ok && Array.isArray(invRes.data)) {
+        setInvitations(invRes.data);
+      } else {
+        try {
+          const localInvs = JSON.parse(localStorage.getItem('at_employee_invites') || '[]');
+          if (localInvs.length > 0) setInvitations(localInvs);
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      if (audRes.ok && Array.isArray(audRes.data)) {
+        setAuditLogs(audRes.data);
+      }
     } catch (err) {
       console.error('Failed to load employees data:', err);
     } finally {

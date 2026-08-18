@@ -13,9 +13,8 @@ import {
 } from "./server/gemini";
 
 
-async function startServer() {
+export function createApp() {
   const app = express();
-  const PORT = 3000;
 
   // JSON Body parsing
   app.use(express.json());
@@ -1217,6 +1216,13 @@ async function startServer() {
     const logs = db.getEmployeeLoginAuditLogs(employeeId);
     res.json(logs);
   });
+
+  return app;
+}
+
+export async function startServer() {
+  const app = createApp();
+  const PORT = 3000;
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
