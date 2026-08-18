@@ -915,6 +915,10 @@ export interface Employee {
   department?: string;
   avatarUrl?: string;
   notes?: string;
+  locationConsent?: boolean;
+  locationConsentedAt?: string;
+  locationRevokedAt?: string;
+  currentLocation?: EmployeeLiveLocation | null;
 }
 
 export interface EmployeeInvitation {
@@ -982,4 +986,45 @@ export interface FaceVerificationResult {
   lockUntil?: string;
   message: string;
 }
+
+export interface EmployeeLocationConsent {
+  id?: string;
+  employeeId: string;
+  consented: boolean;
+  consentedAt?: string;
+  revokedAt?: string;
+  ipAddress?: string;
+  userAgent?: string;
+  legalNoticeText: string;
+  complianceVersion: string;
+}
+
+export interface EmployeeLiveLocation {
+  employeeId: string;
+  employeeName: string;
+  email: string;
+  role: UserRole;
+  lat: number;
+  lng: number;
+  accuracy?: number; // meters
+  heading?: number | null;
+  speed?: number | null;
+  updatedAt: string; // ISO string
+  status: 'active_session' | 'location_unavailable';
+  boroughOrArea?: string;
+  deviceInfo?: string;
+  sessionStartedAt?: string;
+}
+
+export interface EmployeeLocationUpdatePayload {
+  employeeId: string;
+  lat: number;
+  lng: number;
+  accuracy?: number;
+  heading?: number;
+  speed?: number;
+  boroughOrArea?: string;
+  deviceInfo?: string;
+}
+
 

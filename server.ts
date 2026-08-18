@@ -724,6 +724,11 @@ async function startServer() {
     res.json(db.getCommissionLogs(driverId));
   });
 
+  app.get("/api/referrals/lookup/:code", (req, res) => {
+    const data = db.lookupReferralCode(req.params.code);
+    res.json(data);
+  });
+
   app.get("/api/drivers/:id/referrals", (req, res) => {
     const summary = db.getDriverReferralSummary(req.params.id);
     if (!summary) return res.status(404).json({ error: "Driver not found" });
@@ -915,6 +920,105 @@ async function startServer() {
     const role = (req.headers["x-user-role"] as any) || req.query.role;
     const employees = db.getEmployees(role);
     res.json(employees);
+  });
+
+  // =========================================================================
+  // EMPLOYEE GEOLOCATION & LIVE TRACKING API
+  // =========================================================================
+
+  // Get live location of all actively tracked employees (Administrator ONLY)
+  app.get("/api/employees/location/live", (req, res) => {
+    const role = (req.headers["x-user-role"] as any) || req.query.role || "admin";
+    if (role !== "admin") {
+      return res.status(403).json({ error: "Access denied. Only Administrators can view employee live locations." });
+    }
+    const locations = db.getLiveEmployeeLocations('admin');
+    res.json(locations);
+  });
+
+  // Get employee location consent status
+  app.get("/api/employees/location/consent/:employeeId", (req, res) => {
+    const consent = db.getEmployeeLocationConsent(req.params.employeeId);
+    if (!consent) {
+      return res.json({ consented: false, employeeId: req.params.employeeId });
+    }
+    res.json(consent);
+  });
+
+  // Record / update legal location consent (Legal Compliance Audit)
+  app.post("/api/employees/location/consent", (req, res) => {
+    try {
+      const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0] || req.socket.remoteAddress || "72.229.40.15";
+      const userAgent = req.headers["user-agent"] || "Browser";
+      const { employeeId, consented } = req.body;
+
+      if (!employeeId || typeof consented !== "boolean") {
+        return res.status(400).json({ error: "employeeId and boolean consented flag are required." });
+      }
+
+      const record = db.recordEmployeeLocationConsent(employeeId, consented, clientIp, userAgent);
+      res.json(record);
+    } catch (err: any) {
+      res.status(400).json({ error: err?.message || "Failed to record location consent" });
+    }
+  });
+
+  // Send periodic geolocation heartbeat (Active CRM session)
+  app.post("/api/employees/location/heartbeat", (req, res) => {
+    try {
+      let bodyData = req.body;
+      // Handle sendBeacon string payloads if Content-Type was text/plain
+      if (typeof bodyData === "string") {
+        try {
+          bodyData = JSON.parse(bodyData);
+        } catch {
+          // ignore
+        }
+      }
+
+      const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0] || req.socket.remoteAddress || "72.229.40.15";
+      const { employeeId, lat, lng, accuracy, heading, speed, boroughOrArea, deviceInfo } = bodyData;
+
+      if (!employeeId || typeof lat !== "number" || typeof lng !== "number") {
+        return res.status(400).json({ error: "employeeId, lat, and lng are required." });
+      }
+
+      const updatedLoc = db.updateEmployeeLiveLocation({
+        employeeId,
+        lat,
+        lng,
+        accuracy,
+        heading,
+        speed,
+        boroughOrArea,
+        deviceInfo
+      }, clientIp);
+
+      res.json(updatedLoc);
+    } catch (err: any) {
+      res.status(400).json({ error: err?.message || "Failed to update employee location" });
+    }
+  });
+
+  // Clear live location immediately (on logout, tab close, or window unload)
+  app.post("/api/employees/location/clear", (req, res) => {
+    try {
+      let employeeId = req.body?.employeeId;
+      if (typeof req.body === "string") {
+        try {
+          employeeId = JSON.parse(req.body)?.employeeId;
+        } catch {
+          // ignore
+        }
+      }
+
+      if (employeeId) {
+        db.clearEmployeeLiveLocation(employeeId);
+      }
+      res.json({ success: true, message: "Location tracking terminated for session." });
+    } catch (err: any) {
+      res.status(400).json({ error: err?.message || "Failed to clear location" });
+    }
   });
 
   // Update employee status (Admin action: block/unblock/suspend)

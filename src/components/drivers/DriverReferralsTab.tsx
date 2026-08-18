@@ -32,22 +32,33 @@ import {
   UserPlus,
   RefreshCw,
   Search,
-  Filter
+  Filter,
+  Share2,
+  Send,
+  MessageSquare,
+  Globe
 } from 'lucide-react';
+import { ReferralShareModal } from '../referrals/ReferralShareModal';
 
 interface DriverReferralsTabProps {
   driver: Driver;
   onRefreshDriver?: () => void;
+  onOpenLandingPage?: (code: string) => void;
 }
 
 export const DriverReferralsTab: React.FC<DriverReferralsTabProps> = ({
   driver,
-  onRefreshDriver
+  onRefreshDriver,
+  onOpenLandingPage
 }) => {
   const [summary, setSummary] = useState<DriverReferralSummary | null>(null);
   const [commissionLogs, setCommissionLogs] = useState<CommissionRateLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [copiedType, setCopiedType] = useState<'psg_url' | 'psg_code' | 'drv_url' | 'drv_code' | null>(null);
+
+  // Share Modal State
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [shareModalType, setShareModalType] = useState<'passenger' | 'driver'>('passenger');
   
   // Table filters
   const [filterType, setFilterType] = useState<'all' | 'passenger' | 'driver'>('all');
@@ -448,21 +459,50 @@ export const DriverReferralsTab: React.FC<DriverReferralsTabProps> = ({
           </div>
 
           {/* Action Buttons */}
-          <div className="grid grid-cols-2 gap-3 pt-3 border-t border-gray-100">
+          <div className="space-y-2 pt-3 border-t border-gray-100">
             <button
-              onClick={() => downloadQrCode('svg-qr-passenger', `AT_Passenger_QR_${driver.fullName.replace(/\s+/g, '_')}`)}
-              className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-gray-100 text-gray-800 hover:bg-gray-200 flex items-center justify-center gap-1.5 transition-colors"
+              onClick={() => {
+                setShareModalType('passenger');
+                setIsShareModalOpen(true);
+              }}
+              className="w-full py-2.5 px-4 rounded-xl text-xs font-bold bg-gradient-to-r from-sky-600 to-emerald-600 hover:from-sky-500 hover:to-emerald-500 text-white flex items-center justify-center gap-2 transition-all shadow-md shadow-sky-950/20 active:scale-[0.99]"
             >
-              <Download className="w-3.5 h-3.5 text-gray-600" />
-              Скачать PNG
+              <Share2 className="w-4 h-4" />
+              <span>Поделиться ссылкой (WhatsApp, TG, SMS)</span>
             </button>
-            <button
-              onClick={() => handlePrintHandout('passenger')}
-              className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-sky-600 text-white hover:bg-sky-700 flex items-center justify-center gap-1.5 transition-colors shadow-xs"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              Печать наклейки
-            </button>
+
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                onClick={() => {
+                  if (onOpenLandingPage) {
+                    onOpenLandingPage(summary?.passengerReferralCode || 'ATP-TARIQ-101');
+                  } else {
+                    window.open(summary?.passengerReferralUrl || '/ref/ATP-TARIQ-101', '_blank');
+                  }
+                }}
+                className="py-2 px-2.5 rounded-xl text-xs font-semibold bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 flex items-center justify-center gap-1.5 transition-colors truncate"
+                title="Открыть персональный лендинг"
+              >
+                <Globe className="w-3.5 h-3.5" />
+                <span>Лендинг</span>
+              </button>
+
+              <button
+                onClick={() => downloadQrCode('svg-qr-passenger', `AT_Passenger_QR_${driver.fullName.replace(/\s+/g, '_')}`)}
+                className="py-2 px-2.5 rounded-xl text-xs font-semibold bg-gray-100 text-gray-800 hover:bg-gray-200 flex items-center justify-center gap-1.5 transition-colors truncate"
+              >
+                <Download className="w-3.5 h-3.5 text-gray-600" />
+                <span>PNG QR</span>
+              </button>
+
+              <button
+                onClick={() => handlePrintHandout('passenger')}
+                className="py-2 px-2.5 rounded-xl text-xs font-semibold bg-slate-800 text-white hover:bg-slate-700 flex items-center justify-center gap-1.5 transition-colors shadow-xs truncate"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Печать</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -538,21 +578,50 @@ export const DriverReferralsTab: React.FC<DriverReferralsTabProps> = ({
           </div>
 
           {/* Action Buttons */}
-          <div className="grid grid-cols-2 gap-3 pt-3 border-t border-gray-100">
+          <div className="space-y-2 pt-3 border-t border-gray-100">
             <button
-              onClick={() => downloadQrCode('svg-qr-driver', `AT_Driver_Invite_QR_${driver.fullName.replace(/\s+/g, '_')}`)}
-              className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-gray-100 text-gray-800 hover:bg-gray-200 flex items-center justify-center gap-1.5 transition-colors"
+              onClick={() => {
+                setShareModalType('driver');
+                setIsShareModalOpen(true);
+              }}
+              className="w-full py-2.5 px-4 rounded-xl text-xs font-bold bg-gradient-to-r from-amber-600 to-emerald-600 hover:from-amber-500 hover:to-emerald-500 text-white flex items-center justify-center gap-2 transition-all shadow-md shadow-amber-950/20 active:scale-[0.99]"
             >
-              <Download className="w-3.5 h-3.5 text-gray-600" />
-              Скачать PNG
+              <Share2 className="w-4 h-4" />
+              <span>Поделиться с коллегой (WhatsApp, TG, SMS)</span>
             </button>
-            <button
-              onClick={() => handlePrintHandout('driver')}
-              className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-amber-600 text-white hover:bg-amber-700 flex items-center justify-center gap-1.5 transition-colors shadow-xs"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              Печать листовки
-            </button>
+
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                onClick={() => {
+                  if (onOpenLandingPage) {
+                    onOpenLandingPage(summary?.driverReferralCode || 'ATD-TARIQ-101');
+                  } else {
+                    window.open(summary?.driverReferralUrl || '/ref/ATD-TARIQ-101', '_blank');
+                  }
+                }}
+                className="py-2 px-2.5 rounded-xl text-xs font-semibold bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200 flex items-center justify-center gap-1.5 transition-colors truncate"
+                title="Открыть персональный лендинг водителя"
+              >
+                <Globe className="w-3.5 h-3.5" />
+                <span>Лендинг</span>
+              </button>
+
+              <button
+                onClick={() => downloadQrCode('svg-qr-driver', `AT_Driver_Invite_QR_${driver.fullName.replace(/\s+/g, '_')}`)}
+                className="py-2 px-2.5 rounded-xl text-xs font-semibold bg-gray-100 text-gray-800 hover:bg-gray-200 flex items-center justify-center gap-1.5 transition-colors truncate"
+              >
+                <Download className="w-3.5 h-3.5 text-gray-600" />
+                <span>PNG QR</span>
+              </button>
+
+              <button
+                onClick={() => handlePrintHandout('driver')}
+                className="py-2 px-2.5 rounded-xl text-xs font-semibold bg-slate-800 text-white hover:bg-slate-700 flex items-center justify-center gap-1.5 transition-colors shadow-xs truncate"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Печать</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -864,6 +933,24 @@ export const DriverReferralsTab: React.FC<DriverReferralsTabProps> = ({
           </div>
         </div>
       )}
+
+      {/* SHARE MODAL */}
+      <ReferralShareModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        driver={driver}
+        defaultType={shareModalType}
+        referralCode={shareModalType === 'passenger' ? summary?.passengerReferralCode : summary?.driverReferralCode}
+        referralUrl={shareModalType === 'passenger' ? summary?.passengerReferralUrl : summary?.driverReferralUrl}
+        onOpenLandingPage={(code) => {
+          setIsShareModalOpen(false);
+          if (onOpenLandingPage) {
+            onOpenLandingPage(code);
+          } else {
+            window.open(`/ref/${code}`, '_blank');
+          }
+        }}
+      />
     </div>
   );
 };

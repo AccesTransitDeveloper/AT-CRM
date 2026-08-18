@@ -1,6 +1,6 @@
 {
   "name": "Accessible Transit CRM",
   "description": "NYC Taxi & Paratransit Dispatch CRM for Accessible Transit (AT), Queens operations, driver onboarding, TLC documents & compliance verification, 4 Mobile Apps Analytics & Monitoring (Client & Driver iOS/Android), MTA brokerage, AT AI dispatch integration, and Marketing Intelligence with Gemini AI.",
-  "requestFramePermissions": ["camera"],
+  "requestFramePermissions": ["camera", "geolocation"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

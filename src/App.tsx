@@ -17,7 +17,10 @@ import { EmployeesView } from './components/employees/EmployeesView';
 import { EmployeeProfileView } from './components/employees/EmployeeProfileView';
 import { FaceLoginModal } from './components/auth/FaceLoginModal';
 import { SelfRegistrationModal } from './components/employees/SelfRegistrationModal';
+import { EmployeeLocationConsentModal } from './components/employees/EmployeeLocationConsentModal';
+import { ReferralLandingPage } from './components/referrals/ReferralLandingPage';
 import { AiAssistantPanel } from './components/AiAssistantPanel';
+import { useEmployeeLocationTracker } from './hooks/useEmployeeLocationTracker';
 import { initialDrivers, initialOrders, initialBrokers, initialTickets, sampleSettlements } from '../server/db';
 import { Shield, Sparkles, CheckCircle2, AlertCircle, Camera } from 'lucide-react';
 import { useTranslation } from './lib/i18n';
@@ -41,9 +44,35 @@ export default function App() {
   const [isFaceLoginModalOpen, setIsFaceLoginModalOpen] = useState(false);
   const [activeInviteToken, setActiveInviteToken] = useState<string | null>(null);
 
+  // Referral Landing Page State
+  const [referralLandingCode, setReferralLandingCode] = useState<string | null>(null);
+
   // AI Agent (Jarvis) Drawer & Activation States
   const [isAiAgentOpen, setIsAiAgentOpen] = useState(false);
   const [isAiAgentActive, setIsAiAgentActive] = useState(true);
+
+  // Active Employee Mapping for Geolocation Session
+  const activeEmployeeMap: Record<UserRole, { id: string; name: string }> = {
+    admin: { id: 'emp-1', name: 'Elena Rostova' },
+    dispatcher: { id: 'emp-2', name: 'Marcus Vance' },
+    driver_manager: { id: 'emp-3', name: 'Tariq Al-Mansoor' },
+    support: { id: 'emp-4', name: 'Sarah Jenkins' },
+    finance: { id: 'emp-5', name: 'David Chen' }
+  };
+
+  const activeEmployee = activeEmployeeMap[currentRole] || activeEmployeeMap.admin;
+
+  // Real-time Employee Geolocation & Legal Consent Hook
+  const {
+    isConsentModalOpen,
+    handleGrantConsent,
+    handleDeclineConsent
+  } = useEmployeeLocationTracker({
+    employeeId: activeEmployee.id,
+    employeeName: activeEmployee.name,
+    employeeRole: currentRole,
+    enabled: true
+  });
   
   const [isLoading, setIsLoading] = useState(false);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
@@ -55,13 +84,26 @@ export default function App() {
     }, 4000);
   };
 
-  // Check URL params for ?invite=token or ?role=...
+  // Check URL params for ?invite=token, ?ref=code or /ref/CODE path
   useEffect(() => {
     try {
       const urlParams = new URLSearchParams(window.location.search);
       const inviteToken = urlParams.get('invite') || urlParams.get('token');
       if (inviteToken) {
         setActiveInviteToken(inviteToken);
+      }
+
+      const refParam = urlParams.get('ref');
+      if (refParam) {
+        setReferralLandingCode(refParam);
+      }
+
+      const path = window.location.pathname;
+      if (path.startsWith('/ref/')) {
+        const codeFromPath = path.replace('/ref/', '').trim();
+        if (codeFromPath) {
+          setReferralLandingCode(codeFromPath);
+        }
       }
     } catch {
       // ignore
@@ -360,6 +402,21 @@ export default function App() {
   const activeOrdersCount = (orders || []).filter(o => ['created', 'driver_assigned', 'en_route', 'on_trip'].includes(o.status)).length;
   const openTicketsCount = (tickets || []).filter(t => t.status === 'open' || t.status === 'in_progress').length;
 
+  // Render standalone Referral Landing Page if viewing a referral link (/ref/:code or opened from CRM)
+  if (referralLandingCode) {
+    return (
+      <ReferralLandingPage
+        code={referralLandingCode}
+        onBackToCrm={() => {
+          setReferralLandingCode(null);
+          if (window.history.replaceState) {
+            window.history.replaceState({}, document.title, window.location.pathname.startsWith('/ref/') ? '/' : window.location.pathname);
+          }
+        }}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-sky-500 selection:text-white">
       {/* Toast Notification Banner */}
@@ -442,6 +499,7 @@ export default function App() {
             onUpdateDriver={handleUpdateDriver}
             onDeleteDriver={handleDeleteDriver}
             onFetchTrips={handleFetchDriverTrips}
+            onOpenLandingPage={(code) => setReferralLandingCode(code)}
           />
         )}
 
@@ -525,6 +583,7 @@ export default function App() {
           <ReferralProgramDashboard 
             currentRole={currentRole}
             drivers={drivers}
+            onOpenLandingPage={(code) => setReferralLandingCode(code)}
           />
         )}
 
@@ -579,6 +638,16 @@ export default function App() {
           showToast(`Welcome ${employee.fullName}! Your account and Face ID biometrics are now active.`, 'success');
           loadData();
         }}
+      />
+
+      {/* Mandatory Geolocation Legal Consent Modal */}
+      <EmployeeLocationConsentModal
+        isOpen={isConsentModalOpen}
+        employeeName={activeEmployee.name}
+        employeeRole={currentRole}
+        employeeId={activeEmployee.id}
+        onConsent={handleGrantConsent}
+        onDecline={handleDeclineConsent}
       />
 
       {/* Internal AI Assistant (Jarvis) Drawer */}

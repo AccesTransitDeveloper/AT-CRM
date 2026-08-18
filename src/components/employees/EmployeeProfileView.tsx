@@ -14,7 +14,11 @@ import {
   Phone, 
   Mail, 
   Sparkles,
-  Activity
+  Activity,
+  MapPin,
+  Compass,
+  AlertTriangle,
+  Radio
 } from 'lucide-react';
 
 interface EmployeeProfileViewProps {
@@ -33,6 +37,8 @@ export const EmployeeProfileView: React.FC<EmployeeProfileViewProps> = ({
   const [auditLogs, setAuditLogs] = useState<EmployeeLoginAuditLog[]>([]);
   const [reEnrollRequested, setReEnrollRequested] = useState(false);
   const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
+  const [isUpdatingConsent, setIsUpdatingConsent] = useState(false);
+  const [consentSuccessMsg, setConsentSuccessMsg] = useState<string | null>(null);
 
   useEffect(() => {
     // Fetch employee data
@@ -57,6 +63,37 @@ export const EmployeeProfileView: React.FC<EmployeeProfileViewProps> = ({
       setIsSubmittingRequest(false);
       setReEnrollRequested(true);
     }, 800);
+  };
+
+  const handleToggleLocationConsent = async (newConsented: boolean) => {
+    if (!profile) return;
+    setIsUpdatingConsent(true);
+    try {
+      const res = await fetch('/api/employees/location/consent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employeeId: profile.id,
+          consented: newConsented,
+          legalNoticeText: 'Accessible Transit отслеживает вашу геолокацию только пока вы авторизованы в CRM-системе, в рабочих целях (координация диспетчеризации и учёт присутствия). Ваше местоположение видно администраторам. Слежка прекращается, как только вы выходите из системы или закрываете вкладку.'
+        })
+      });
+      if (res.ok) {
+        setProfile(prev => prev ? {
+          ...prev,
+          locationConsent: newConsented,
+          locationConsentedAt: newConsented ? new Date().toISOString() : prev.locationConsentedAt,
+          locationRevokedAt: !newConsented ? new Date().toISOString() : undefined,
+          currentLocation: !newConsented ? null : prev.currentLocation
+        } : null);
+        setConsentSuccessMsg(newConsented ? 'Согласие на геолокацию успешно активировано.' : 'Согласие отозвано. Отслеживание немедленно прекращено.');
+        setTimeout(() => setConsentSuccessMsg(null), 4000);
+      }
+    } catch (err) {
+      console.error('Consent update error:', err);
+    } finally {
+      setIsUpdatingConsent(false);
+    }
   };
 
   const roleLabels: Record<string, { label: string; desc: string; color: string }> = {
@@ -202,6 +239,88 @@ export const EmployeeProfileView: React.FC<EmployeeProfileViewProps> = ({
               </button>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Geolocation & Privacy Compliance Card */}
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-5">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-sky-500/20 border border-sky-500/30 flex items-center justify-center text-sky-400">
+              <MapPin className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-white">Рабочая геолокация и статус конфиденциальности</h3>
+              <p className="text-xs text-slate-400">Контроль передачи GPS-координат во время активной смены в CRM</p>
+            </div>
+          </div>
+
+          <span className="px-2.5 py-1 rounded-full text-xs font-mono bg-slate-800 text-slate-300 border border-slate-700">
+            Legal Policy v2.1
+          </span>
+        </div>
+
+        {consentSuccessMsg && (
+          <div className="p-3 bg-emerald-950/40 border border-emerald-500/40 rounded-xl text-xs text-emerald-300 flex items-center gap-2 animate-in fade-in">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{consentSuccessMsg}</span>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+          <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 space-y-2">
+            <span className="text-slate-400 font-medium block">Текущий статус согласия:</span>
+            {profile?.locationConsent ? (
+              <div className="space-y-1">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                  Согласие предоставлено (Активно)
+                </span>
+                <p className="text-[11px] text-slate-400">
+                  Дата подписания: {profile.locationConsentedAt ? new Date(profile.locationConsentedAt).toLocaleString() : 'Активно'}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  Location Unavailable (Согласие не выдано)
+                </span>
+                <p className="text-[11px] text-slate-400">
+                  CRM работает штатно. Передача GPS не осуществляется.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 space-y-2">
+            <span className="text-slate-400 font-medium block">Юридическое уведомление:</span>
+            <p className="text-[11px] text-slate-300 leading-relaxed italic">
+              «Accessible Transit отслеживает вашу геолокацию только пока вы авторизованы в CRM-системе, в рабочих целях... Ваше местоположение видно администраторам. Слежка прекращается, как только вы выходите из системы или закрываете вкладку.»
+            </p>
+          </div>
+        </div>
+
+        <div className="pt-2 flex flex-wrap items-center gap-3">
+          {profile?.locationConsent ? (
+            <button
+              type="button"
+              onClick={() => handleToggleLocationConsent(false)}
+              disabled={isUpdatingConsent}
+              className="px-4 py-2 bg-rose-950/50 hover:bg-rose-900/60 text-rose-300 border border-rose-800/60 rounded-xl text-xs font-semibold transition-all cursor-pointer"
+            >
+              {isUpdatingConsent ? 'Обновление...' : 'Отозвать согласие на геолокацию'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => handleToggleLocationConsent(true)}
+              disabled={isUpdatingConsent}
+              className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-semibold transition-all shadow-md shadow-sky-600/25 cursor-pointer"
+            >
+              {isUpdatingConsent ? 'Обновление...' : 'Предоставить согласие и включить геолокацию'}
+            </button>
+          )}
         </div>
       </div>
 

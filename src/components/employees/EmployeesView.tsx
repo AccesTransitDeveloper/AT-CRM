@@ -23,10 +23,14 @@ import {
   Activity,
   Sparkles,
   Smartphone,
-  Info
+  Info,
+  MapPin,
+  Compass,
+  Radio
 } from 'lucide-react';
 import { InviteEmployeeModal } from './InviteEmployeeModal';
 import { SelfRegistrationModal } from './SelfRegistrationModal';
+import { EmployeeLiveMap } from './EmployeeLiveMap';
 
 interface EmployeesViewProps {
   currentRole: UserRole;
@@ -40,7 +44,8 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
   const { t } = useTranslation();
 
   // State
-  const [activeTab, setActiveTab] = useState<'directory' | 'invitations' | 'audit'>('directory');
+  const [activeTab, setActiveTab] = useState<'directory' | 'invitations' | 'audit' | 'map'>('directory');
+  const [focusedEmployeeIdOnMap, setFocusedEmployeeIdOnMap] = useState<string | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [invitations, setInvitations] = useState<EmployeeInvitation[]>([]);
   const [auditLogs, setAuditLogs] = useState<EmployeeLoginAuditLog[]>([]);
@@ -319,6 +324,27 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
               {auditLogs.length}
             </span>
           </button>
+
+          <button
+            onClick={() => {
+              setFocusedEmployeeIdOnMap(null);
+              setActiveTab('map');
+            }}
+            className={`flex items-center gap-2 px-4 py-3 text-xs sm:text-sm font-semibold border-b-2 transition-all ${
+              activeTab === 'map'
+                ? 'border-rose-500 text-rose-400 bg-rose-500/5'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <div className="relative flex items-center justify-center">
+              <MapPin className="w-4 h-4 text-rose-400" />
+              <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+            </div>
+            <span>Live Map (Карта сотрудников)</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-rose-500/20 text-rose-300 font-bold border border-rose-500/30">
+              Admin
+            </span>
+          </button>
         </div>
 
         <button
@@ -385,6 +411,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
                     <th className="px-4 py-3.5">{t('employees.thEmployee')}</th>
                     <th className="px-4 py-3.5">{t('employees.thRole')}</th>
                     <th className="px-4 py-3.5">{t('employees.thStatus')}</th>
+                    <th className="px-4 py-3.5">Геолокация</th>
                     <th className="px-4 py-3.5">{t('employees.thFaceId')}</th>
                     <th className="px-4 py-3.5">{t('employees.thRegistered')}</th>
                     <th className="px-4 py-3.5">{t('employees.thLastLogin')}</th>
@@ -394,7 +421,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
                 <tbody className="divide-y divide-slate-800/60">
                   {filteredEmployees.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="text-center py-8 text-slate-500">
+                      <td colSpan={8} className="text-center py-8 text-slate-500">
                         No employees found matching criteria.
                       </td>
                     </tr>
@@ -445,6 +472,37 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
                             {emp.status === 'suspended' && (
                               <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-700 text-slate-300">
                                 Suspended
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Live Geolocation */}
+                          <td className="px-4 py-3">
+                            {emp.currentLocation ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setFocusedEmployeeIdOnMap(emp.id);
+                                  setActiveTab('map');
+                                }}
+                                className="group inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-semibold transition-all cursor-pointer shadow-sm"
+                                title="Показать на Live Map"
+                              >
+                                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
+                                <span className="truncate max-w-[110px]">
+                                  {emp.currentLocation.boroughOrArea || 'Live NYC'}
+                                </span>
+                                <Compass className="w-3 h-3 text-emerald-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                              </button>
+                            ) : emp.locationConsent === false || emp.locationRevokedAt ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-medium bg-amber-500/10 text-amber-400/90 border border-amber-500/20">
+                                <AlertTriangle className="w-3 h-3 shrink-0" />
+                                Location Unavailable
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
+                                <span className="w-1.5 h-1.5 rounded-full bg-slate-600" />
+                                Offline
                               </span>
                             )}
                           </td>
@@ -782,6 +840,31 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* TAB 4: LIVE MAP */}
+      {activeTab === 'map' && (
+        currentRole === 'admin' ? (
+          <EmployeeLiveMap 
+            currentRole={currentRole}
+            focusedEmployeeId={focusedEmployeeIdOnMap}
+          />
+        ) : (
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center space-y-4 max-w-xl mx-auto my-8">
+            <div className="w-16 h-16 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 mx-auto">
+              <ShieldAlert className="w-8 h-8" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-lg font-bold text-white">Доступ к Live Map ограничен (RBAC Security)</h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Согласно регламенту конфиденциальности труда Accessible Transit (v2.1), мониторинг оперативной геолокации сотрудников доступен только учётным записям с правами <span className="text-rose-400 font-semibold">Administrator</span>.
+              </p>
+            </div>
+            <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800 text-xs text-slate-400">
+              Ваша текущая роль: <span className="font-mono text-sky-400 font-semibold capitalize">{currentRole}</span>. Для просмотра карты переключите роль на <strong>Administrator</strong> в верхней панели CRM.
+            </div>
+          </div>
+        )
       )}
 
       {/* Invite Modal */}

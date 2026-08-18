@@ -19,6 +19,7 @@ interface DriversViewProps {
   onUpdateDriver: (id: string, updates: Partial<Driver>) => Promise<void>;
   onDeleteDriver: (id: string) => Promise<void>;
   onFetchTrips: (driverId: string) => Promise<any[]>;
+  onOpenLandingPage?: (code: string) => void;
 }
 
 const statusStyleConfig: Record<DriverStatus, { bg: string; text: string; border: string }> = {
@@ -50,7 +51,8 @@ export const DriversView: React.FC<DriversViewProps> = ({
   onCreateDriver,
   onUpdateDriver,
   onDeleteDriver,
-  onFetchTrips
+  onFetchTrips,
+  onOpenLandingPage
 }) => {
   const { t } = useTranslation();
   const [viewMode, setViewMode] = useState<'table' | 'kanban'>('table');
@@ -526,6 +528,7 @@ export const DriversView: React.FC<DriversViewProps> = ({
             }
           }}
           onOpenDocViewer={(url) => setInspectDocUrl(url)}
+          onOpenLandingPage={onOpenLandingPage}
         />
       )}
 

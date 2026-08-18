@@ -70,6 +70,7 @@ interface DriverDetailModalProps {
   onUpdateStatus: (id: string, status: DriverStatus, reason?: string) => Promise<void>;
   onUpdateDriver?: (id: string, updates: Partial<Driver>) => Promise<void>;
   onOpenDocViewer?: (url: string, title?: string) => void;
+  onOpenLandingPage?: (code: string) => void;
 }
 
 type TabType = 'overview' | 'finance' | 'orders' | 'ai-insight' | 'documents' | 'referrals';
@@ -82,7 +83,8 @@ export const DriverDetailModal: React.FC<DriverDetailModalProps> = ({
   onClose,
   onUpdateStatus,
   onUpdateDriver,
-  onOpenDocViewer = () => {}
+  onOpenDocViewer = () => {},
+  onOpenLandingPage
 }) => {
   // Navigation tabs
   const [activeTab, setActiveTab] = useState<TabType>('overview');
@@ -1259,6 +1261,7 @@ export const DriverDetailModal: React.FC<DriverDetailModalProps> = ({
             <DriverReferralsTab 
               driver={driver} 
               onRefreshDriver={loadDriverAnalytics}
+              onOpenLandingPage={onOpenLandingPage}
             />
           )}
 

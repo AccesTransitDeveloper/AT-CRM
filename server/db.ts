@@ -47,7 +47,10 @@ import {
   EmployeeLoginAuditLog,
   EmployeeStatus,
   FaceEnrollmentPayload,
-  FaceVerificationResult
+  FaceVerificationResult,
+  EmployeeLocationConsent,
+  EmployeeLiveLocation,
+  EmployeeLocationUpdatePayload
 } from '../src/types';
 import { 
   initialComplianceDocuments,
@@ -900,7 +903,9 @@ class DatabaseStore {
       faceEmbeddingVectorId: 'vec-emb-emp-1-rekognition',
       failedFaceAttempts: 0,
       department: 'Executive Operations & Compliance',
-      notes: 'Lead Administrator with full root CRM authorization'
+      notes: 'Lead Administrator with full root CRM authorization',
+      locationConsent: true,
+      locationConsentedAt: '2026-02-18T09:00:00.000Z'
     },
     {
       id: 'emp-2',
@@ -918,7 +923,9 @@ class DatabaseStore {
       faceEmbeddingVectorId: 'vec-emb-emp-2-rekognition',
       failedFaceAttempts: 0,
       department: 'Queens Central Dispatch Hub',
-      notes: 'Senior Dispatcher for Queens paratransit fleet'
+      notes: 'Senior Dispatcher for Queens paratransit fleet',
+      locationConsent: true,
+      locationConsentedAt: '2026-02-18T09:15:00.000Z'
     },
     {
       id: 'emp-3',
@@ -936,7 +943,9 @@ class DatabaseStore {
       faceEmbeddingVectorId: 'vec-emb-emp-3-rekognition',
       failedFaceAttempts: 0,
       department: 'Fleet Safety & Driver Onboarding',
-      notes: 'Responsible for TLC document compliance and driver vetting'
+      notes: 'Responsible for TLC document compliance and driver vetting',
+      locationConsent: true,
+      locationConsentedAt: '2026-02-18T08:45:00.000Z'
     },
     {
       id: 'emp-4',
@@ -952,7 +961,8 @@ class DatabaseStore {
       faceEnrolled: false,
       failedFaceAttempts: 0,
       department: 'Passenger & Broker Support',
-      notes: 'Support operator. Face ID re-enrollment pending camera verification'
+      notes: 'Support operator. Face ID re-enrollment pending camera verification',
+      locationConsent: false
     },
     {
       id: 'emp-5',
@@ -970,9 +980,110 @@ class DatabaseStore {
       faceEmbeddingVectorId: 'vec-emb-emp-5-rekognition',
       failedFaceAttempts: 0,
       department: 'Finance & Brokerage Settlements',
-      notes: '15% Commission & Driver Payout manager'
+      notes: '15% Commission & Driver Payout manager',
+      locationConsent: false
     }
   ];
+
+  // Geolocation & Legal Consent Store
+  employeeLocationConsents: Map<string, EmployeeLocationConsent> = new Map([
+    [
+      'emp-1',
+      {
+        id: 'loc-cons-1',
+        employeeId: 'emp-1',
+        consented: true,
+        consentedAt: '2026-02-18T09:00:00.000Z',
+        ipAddress: '72.229.40.15',
+        legalNoticeText: 'Accessible Transit отслеживает вашу геолокацию только пока вы авторизованы в CRM-системе, в рабочих целях (координация диспетчеризации и учёт присутствия). Ваше местоположение видно администраторам. Слежка прекращается, как только вы выходите из системы или закрываете вкладку.',
+        complianceVersion: 'v2.1-compliance-2026'
+      }
+    ],
+    [
+      'emp-2',
+      {
+        id: 'loc-cons-2',
+        employeeId: 'emp-2',
+        consented: true,
+        consentedAt: '2026-02-18T09:15:00.000Z',
+        ipAddress: '198.51.100.22',
+        legalNoticeText: 'Accessible Transit отслеживает вашу геолокацию только пока вы авторизованы в CRM-системе, в рабочих целях (координация диспетчеризации и учёт присутствия). Ваше местоположение видно администраторам. Слежка прекращается, как только вы выходите из системы или закрываете вкладку.',
+        complianceVersion: 'v2.1-compliance-2026'
+      }
+    ],
+    [
+      'emp-3',
+      {
+        id: 'loc-cons-3',
+        employeeId: 'emp-3',
+        consented: true,
+        consentedAt: '2026-02-18T08:45:00.000Z',
+        ipAddress: '198.51.100.33',
+        legalNoticeText: 'Accessible Transit отслеживает вашу геолокацию только пока вы авторизованы в CRM-системе, в рабочих целях (координация диспетчеризации и учёт присутствия). Ваше местоположение видно администраторам. Слежка прекращается, как только вы выходите из системы или закрываете вкладку.',
+        complianceVersion: 'v2.1-compliance-2026'
+      }
+    ]
+  ]);
+
+  employeeLiveLocations: Map<string, EmployeeLiveLocation> = new Map([
+    [
+      'emp-1',
+      {
+        employeeId: 'emp-1',
+        employeeName: 'Elena Rostova',
+        email: 'elena.rostova@accessibletransit.nyc',
+        role: 'admin',
+        lat: 40.7447,
+        lng: -73.9485,
+        accuracy: 8,
+        heading: 90,
+        speed: 0,
+        updatedAt: new Date(Date.now() - 35 * 1000).toISOString(),
+        status: 'active_session',
+        boroughOrArea: 'Long Island City (AT HQ)',
+        deviceInfo: 'Chrome / macOS (Office Workstation)',
+        sessionStartedAt: new Date(Date.now() - 35 * 60 * 1000).toISOString()
+      }
+    ],
+    [
+      'emp-2',
+      {
+        employeeId: 'emp-2',
+        employeeName: 'Marcus Vance',
+        email: 'marcus.vance@accessibletransit.nyc',
+        role: 'dispatcher',
+        lat: 40.7557,
+        lng: -73.8831,
+        accuracy: 12,
+        heading: 180,
+        speed: 0,
+        updatedAt: new Date(Date.now() - 75 * 1000).toISOString(),
+        status: 'active_session',
+        boroughOrArea: 'Jackson Heights Dispatch Station',
+        deviceInfo: 'Edge / Windows 11 (Dispatch Console)',
+        sessionStartedAt: new Date(Date.now() - 45 * 60 * 1000).toISOString()
+      }
+    ],
+    [
+      'emp-3',
+      {
+        employeeId: 'emp-3',
+        employeeName: 'Boris Kuznetsov',
+        email: 'boris.k@accessibletransit.nyc',
+        role: 'driver_manager',
+        lat: 40.7025,
+        lng: -73.7997,
+        accuracy: 15,
+        heading: null,
+        speed: 1.2,
+        updatedAt: new Date(Date.now() - 140 * 1000).toISOString(),
+        status: 'active_session',
+        boroughOrArea: 'Jamaica Paratransit Base',
+        deviceInfo: 'Safari / iPad Pro (Field Inspection)',
+        sessionStartedAt: new Date(Date.now() - 2 * 3600 * 1000).toISOString()
+      }
+    ]
+  ]);
 
   employeeInvitations: EmployeeInvitation[] = [
     {
@@ -2771,6 +2882,45 @@ class DatabaseStore {
     return calculateReferralDashboardStats(this.drivers, this.referrals, this.referralRewards, this.referralSettings);
   }
 
+  lookupReferralCode(code: string) {
+    const cleanCode = (code || '').trim().toUpperCase();
+    const isDriverType = cleanCode.startsWith('ATD');
+    
+    // Find matching driver or default to Tariq
+    const driver = this.drivers.find(d => {
+      const namePart = d.fullName.split(' ')[0].toUpperCase();
+      const idPart = d.id.replace(/\D/g, '');
+      return cleanCode.includes(namePart) || (idPart && cleanCode.includes(idPart)) || d.id === code;
+    }) || this.drivers[0];
+
+    const referrerName = driver ? driver.fullName : 'Tariq Al-Mansoor';
+    const referrerRole = driver ? 'driver' : 'passenger';
+    const codeType = isDriverType ? 'driver' : 'passenger';
+
+    return {
+      code: cleanCode || (isDriverType ? 'ATD-TARIQ-101' : 'ATP-TARIQ-101'),
+      referrerId: driver ? driver.id : 'drv-101',
+      referrerName,
+      referrerRole,
+      referrerAvatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80',
+      vehicleMakeModel: driver ? driver.vehicleMakeModel : 'Toyota Sienna WAV',
+      vehiclePlate: driver ? driver.vehiclePlate : 'T789211C',
+      tlcLicenseNumber: driver ? driver.tlcLicenseNumber : 'TLC-4992104',
+      driverRating: driver ? driver.rating : 4.98,
+      totalTrips: driver ? driver.totalTrips || 1420 : 1420,
+      codeType,
+      discountAmount: '$10.00 (на первый заказ)',
+      commissionRate: '15% (против 25-30% у других агрегаторов)',
+      heroHeadline: isDriverType 
+        ? `${referrerName} приглашает тебя в команду водителей Accessible Transit`
+        : `${referrerName} приглашает тебя в Accessible Transit — получи скидку $10 на первый заказ`,
+      heroSubtitle: isDriverType
+        ? 'Присоединяйся к команде водителей Accessible Transit — гарантированная низкая комиссия 15% и постоянный поток заказов от MTA и госпиталей'
+        : 'Получи скидку $10 на первую поездку на комфортном инклюзивном такси Accessible Transit по всему Квинсу',
+      valid: true
+    };
+  }
+
   getReferralRewards(userId?: string): ReferralReward[] {
     this.checkExpiredRewards();
     if (userId) {
@@ -3935,6 +4085,201 @@ class DatabaseStore {
     };
     this.employeeLoginAuditLogs.unshift(entry);
     return entry;
+  }
+
+  // =========================================================================
+  // EMPLOYEE GEOLOCATION & LEGAL CONSENT METHODS
+  // =========================================================================
+
+  recordEmployeeLocationConsent(
+    employeeId: string, 
+    consented: boolean, 
+    ip: string = '72.229.40.15', 
+    userAgent?: string
+  ): EmployeeLocationConsent {
+    const emp = this.employees.find(e => e.id === employeeId);
+    if (!emp) {
+      throw new Error(`Employee with ID ${employeeId} not found.`);
+    }
+
+    const nowIso = new Date().toISOString();
+    emp.locationConsent = consented;
+    
+    if (consented) {
+      emp.locationConsentedAt = nowIso;
+      emp.locationRevokedAt = undefined;
+    } else {
+      emp.locationRevokedAt = nowIso;
+      // Immediately purge any live location if consent is revoked
+      this.employeeLiveLocations.delete(employeeId);
+      emp.currentLocation = null;
+    }
+
+    const consentRecord: EmployeeLocationConsent = {
+      id: `loc-cons-${employeeId}-${Date.now().toString(36)}`,
+      employeeId,
+      consented,
+      consentedAt: consented ? nowIso : undefined,
+      revokedAt: !consented ? nowIso : undefined,
+      ipAddress: ip,
+      userAgent,
+      legalNoticeText: 'Accessible Transit отслеживает вашу геолокацию только пока вы авторизованы в CRM-системе, в рабочих целях (координация диспетчеризации и учёт присутствия). Ваше местоположение видно администраторам. Слежка прекращается, как только вы выходите из системы или закрываете вкладку.',
+      complianceVersion: 'v2.1-compliance-2026'
+    };
+
+    this.employeeLocationConsents.set(employeeId, consentRecord);
+    return consentRecord;
+  }
+
+  getEmployeeLocationConsent(employeeId: string): EmployeeLocationConsent | undefined {
+    return this.employeeLocationConsents.get(employeeId);
+  }
+
+  getBoroughOrAreaFromCoords(lat: number, lng: number): string {
+    if (lat >= 40.64 && lat <= 40.66 && lng >= -73.80 && lng <= -73.76) return 'JFK Airport Dispatch Zone';
+    if (lat >= 40.76 && lat <= 40.78 && lng >= -73.88 && lng <= -73.86) return 'LaGuardia Hub, East Elmhurst';
+    if (lat >= 40.735 && lat <= 40.76 && lng >= -73.96 && lng <= -73.92) return 'Long Island City (AT HQ)';
+    if (lat >= 40.74 && lat <= 40.77 && lng >= -73.90 && lng <= -73.86) return 'Jackson Heights Dispatch Station';
+    if (lat >= 40.69 && lat <= 40.72 && lng >= -73.82 && lng <= -73.78) return 'Jamaica Paratransit Base';
+    if (lat >= 40.75 && lat <= 40.78 && lng >= -73.85 && lng <= -73.81) return 'Flushing Terminal Hub';
+    if (lng > -73.93 && lat < 40.70) return 'Brooklyn Operations Base';
+    if (lng <= -73.96 && lat >= 40.71) return 'Manhattan Medical Hub';
+    return 'Queens Operations Zone';
+  }
+
+  updateEmployeeLiveLocation(
+    payload: EmployeeLocationUpdatePayload,
+    ip: string = '72.229.40.15'
+  ): EmployeeLiveLocation {
+    const emp = this.employees.find(e => e.id === payload.employeeId);
+    if (!emp) {
+      throw new Error(`Employee ${payload.employeeId} not found.`);
+    }
+
+    if (!emp.locationConsent) {
+      throw new Error('Employee has not granted mandatory legal consent for geolocation tracking.');
+    }
+
+    if (emp.status === 'blocked' || emp.status === 'suspended') {
+      throw new Error(`Employee status is ${emp.status}. Geolocation tracking denied.`);
+    }
+
+    const nowIso = new Date().toISOString();
+    const existing = this.employeeLiveLocations.get(payload.employeeId);
+    const borough = payload.boroughOrArea || this.getBoroughOrAreaFromCoords(payload.lat, payload.lng);
+
+    const liveLoc: EmployeeLiveLocation = {
+      employeeId: emp.id,
+      employeeName: emp.fullName,
+      email: emp.email,
+      role: emp.role,
+      lat: payload.lat,
+      lng: payload.lng,
+      accuracy: payload.accuracy ?? 10,
+      heading: payload.heading ?? null,
+      speed: payload.speed ?? null,
+      updatedAt: nowIso,
+      status: 'active_session',
+      boroughOrArea: borough,
+      deviceInfo: payload.deviceInfo || existing?.deviceInfo || 'Web Browser / CRM Station',
+      sessionStartedAt: existing?.sessionStartedAt || nowIso
+    };
+
+    this.employeeLiveLocations.set(emp.id, liveLoc);
+    emp.currentLocation = liveLoc;
+    emp.lastLoginAt = nowIso;
+
+    return liveLoc;
+  }
+
+  clearEmployeeLiveLocation(employeeId: string): boolean {
+    const emp = this.employees.find(e => e.id === employeeId);
+    if (emp) {
+      emp.currentLocation = null;
+    }
+    return this.employeeLiveLocations.delete(employeeId);
+  }
+
+  getLiveEmployeeLocations(requestingRole?: UserRole): EmployeeLiveLocation[] {
+    // RBAC Rule: Only Administrator can view Live Map of employees
+    if (requestingRole !== 'admin') {
+      return [];
+    }
+
+    const now = Date.now();
+    // Maximum active session heartbeat timeout: 15 minutes
+    // Consented active employees are automatically maintained
+    const activeLocations: EmployeeLiveLocation[] = [];
+
+    // Ensure initial demonstration beacons exist if empty
+    if (this.employeeLiveLocations.size === 0) {
+      this.employeeLiveLocations.set('emp-1', {
+        employeeId: 'emp-1',
+        employeeName: 'Elena Rostova',
+        email: 'elena.rostova@accessibletransit.nyc',
+        role: 'admin',
+        lat: 40.7447,
+        lng: -73.9485,
+        accuracy: 8,
+        heading: 90,
+        speed: 0,
+        updatedAt: new Date(now - 30 * 1000).toISOString(),
+        status: 'active_session',
+        boroughOrArea: 'Long Island City (AT HQ)',
+        deviceInfo: 'Chrome / macOS (Office Workstation)',
+        sessionStartedAt: new Date(now - 35 * 60 * 1000).toISOString()
+      });
+      this.employeeLiveLocations.set('emp-2', {
+        employeeId: 'emp-2',
+        employeeName: 'Marcus Vance',
+        email: 'marcus.vance@accessibletransit.nyc',
+        role: 'dispatcher',
+        lat: 40.7557,
+        lng: -73.8831,
+        accuracy: 12,
+        heading: 180,
+        speed: 0,
+        updatedAt: new Date(now - 60 * 1000).toISOString(),
+        status: 'active_session',
+        boroughOrArea: 'Jackson Heights Dispatch Station',
+        deviceInfo: 'Edge / Windows 11 (Dispatch Console)',
+        sessionStartedAt: new Date(now - 45 * 60 * 1000).toISOString()
+      });
+      this.employeeLiveLocations.set('emp-3', {
+        employeeId: 'emp-3',
+        employeeName: 'Boris Kuznetsov',
+        email: 'boris.k@accessibletransit.nyc',
+        role: 'driver_manager',
+        lat: 40.7025,
+        lng: -73.7997,
+        accuracy: 15,
+        heading: null,
+        speed: 1.2,
+        updatedAt: new Date(now - 120 * 1000).toISOString(),
+        status: 'active_session',
+        boroughOrArea: 'Jamaica Paratransit Base',
+        deviceInfo: 'Safari / iPad Pro (Field Inspection)',
+        sessionStartedAt: new Date(now - 2 * 3600 * 1000).toISOString()
+      });
+    }
+
+    for (const [employeeId, loc] of this.employeeLiveLocations.entries()) {
+      const emp = this.employees.find(e => e.id === employeeId);
+      if (!emp || emp.status === 'blocked' || !emp.locationConsent) {
+        this.employeeLiveLocations.delete(employeeId);
+        continue;
+      }
+
+      // If timestamp is older than 15 mins for demo users, refresh timestamp so map remains interactive
+      const diffMs = now - new Date(loc.updatedAt).getTime();
+      if (diffMs > 15 * 60 * 1000 && (employeeId === 'emp-1' || employeeId === 'emp-2' || employeeId === 'emp-3')) {
+        loc.updatedAt = new Date(now - (Math.floor(Math.random() * 40) + 10) * 1000).toISOString();
+      }
+
+      activeLocations.push(loc);
+    }
+
+    return activeLocations;
   }
 }
 

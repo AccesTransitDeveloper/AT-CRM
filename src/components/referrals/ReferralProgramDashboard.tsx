@@ -33,8 +33,10 @@ import {
   ExternalLink,
   ChevronRight,
   BarChart3,
-  Percent
+  Percent,
+  Globe
 } from 'lucide-react';
+import { ReferralShareModal } from './ReferralShareModal';
 import { 
   AreaChart, 
   Area, 
@@ -52,18 +54,25 @@ interface ReferralProgramDashboardProps {
   currentRole: UserRole;
   drivers?: Driver[];
   onOpenDriverModal?: (driver: Driver) => void;
+  onOpenLandingPage?: (code: string) => void;
 }
 
 export const ReferralProgramDashboard: React.FC<ReferralProgramDashboardProps> = ({
   currentRole,
   drivers = [],
-  onOpenDriverModal
+  onOpenDriverModal,
+  onOpenLandingPage
 }) => {
   const [stats, setStats] = useState<ReferralDashboardStats | null>(null);
   const [referrals, setReferrals] = useState<ReferralRecord[]>([]);
   const [rewards, setRewards] = useState<ReferralReward[]>([]);
   const [settings, setSettings] = useState<ReferralSettings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Share Modal State
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [shareCode, setShareCode] = useState('ATP-TARIQ-101');
+  const [shareAudience, setShareAudience] = useState<'passenger' | 'driver'>('passenger');
 
   // Active subtab in dashboard
   const [subTab, setSubTab] = useState<'overview' | 'table' | 'antifraud' | 'settings'>('overview');
@@ -219,7 +228,34 @@ export const ReferralProgramDashboard: React.FC<ReferralProgramDashboardProps> =
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => {
+                setShareCode('ATP-TARIQ-101');
+                setShareAudience('passenger');
+                setIsShareModalOpen(true);
+              }}
+              className="px-3.5 py-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-md shadow-sky-950/40"
+            >
+              <Share2 className="w-4 h-4" />
+              <span>Шеринг QR & Ссылок</span>
+            </button>
+
+            <button
+              onClick={() => {
+                if (onOpenLandingPage) {
+                  onOpenLandingPage('ATP-TARIQ-101');
+                } else {
+                  window.open('/ref/ATP-TARIQ-101', '_blank');
+                }
+              }}
+              className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-sky-400 rounded-xl text-xs font-bold flex items-center gap-2 transition-colors border border-slate-700"
+              title="Открыть реферальный лендинг"
+            >
+              <Globe className="w-4 h-4" />
+              <span>Открыть Лендинг</span>
+            </button>
+
             <button
               onClick={fetchDashboardData}
               className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors border border-slate-700"
@@ -233,7 +269,7 @@ export const ReferralProgramDashboard: React.FC<ReferralProgramDashboardProps> =
               className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition-colors shadow-xs"
             >
               <Plus className="w-4 h-4" />
-              + Добавить реферала (Тест)
+              <span>+ Добавить (Тест)</span>
             </button>
           </div>
         </div>
@@ -915,6 +951,23 @@ export const ReferralProgramDashboard: React.FC<ReferralProgramDashboardProps> =
           </div>
         </div>
       )}
+
+      {/* SHARE MODAL */}
+      <ReferralShareModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        referralCode={shareCode}
+        referralUrl={`https://accessibletransit.com/ref/${shareCode}`}
+        defaultType={shareAudience}
+        onOpenLandingPage={(code) => {
+          setIsShareModalOpen(false);
+          if (onOpenLandingPage) {
+            onOpenLandingPage(code);
+          } else {
+            window.open(`/ref/${code}`, '_blank');
+          }
+        }}
+      />
     </div>
   );
 };

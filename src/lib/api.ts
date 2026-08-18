@@ -800,6 +800,12 @@ export const api = {
     return res.json();
   },
 
+  async lookupReferralCode(code: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/referrals/lookup/${encodeURIComponent(code)}`);
+    if (!res.ok) throw new Error('Failed to lookup referral code');
+    return res.json();
+  },
+
   // ==========================================
   // AI AGENT ("JARVIS") API METHODS
   // ==========================================
