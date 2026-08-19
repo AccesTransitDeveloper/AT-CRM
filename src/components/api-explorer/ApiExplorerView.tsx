@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
-import { Terminal, Key, Play, CheckCircle2, Copy, Bot, Smartphone, ExternalLink, ShieldCheck, RefreshCw } from 'lucide-react';
+import { Terminal, Key, Play, CheckCircle2, Copy, Bot, Smartphone, ExternalLink, ShieldCheck, RefreshCw, Server, Cpu } from 'lucide-react';
 import { api } from '../../lib/api';
+import { AdminPanelIntegrationView } from '../integration/AdminPanelIntegrationView';
 
 interface ApiExplorerViewProps {
   onRefreshAll: () => void;
 }
 
 export const ApiExplorerView: React.FC<ApiExplorerViewProps> = ({ onRefreshAll }) => {
+  const [hubMode, setHubMode] = useState<'admin_panel_client' | 'direct_api_sandbox'>('admin_panel_client');
   const [apiKey, setApiKey] = useState('at_live_sec_9941a87b41e9');
   const [copied, setCopied] = useState(false);
   const [isExecuting, setIsExecuting] = useState(false);
@@ -96,8 +98,38 @@ export const ApiExplorerView: React.FC<ApiExplorerViewProps> = ({ onRefreshAll }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+      {/* Top Main Mode Selector */}
+      <div className="flex items-center space-x-2 bg-slate-900/90 p-1.5 rounded-xl border border-slate-800 w-fit">
+        <button
+          onClick={() => setHubMode('admin_panel_client')}
+          className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 ${
+            hubMode === 'admin_panel_client'
+              ? 'bg-purple-600 text-white shadow'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <Server className="w-4 h-4 text-purple-300" />
+          Clone App Integration (AdminPanelClient)
+        </button>
+        <button
+          onClick={() => setHubMode('direct_api_sandbox')}
+          className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 ${
+            hubMode === 'direct_api_sandbox'
+              ? 'bg-purple-600 text-white shadow'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <Terminal className="w-4 h-4 text-sky-300" />
+          Direct REST API Sandbox & Voice Bot Hook
+        </button>
+      </div>
+
+      {hubMode === 'admin_panel_client' ? (
+        <AdminPanelIntegrationView onRefreshAll={onRefreshAll} />
+      ) : (
+        <div className="space-y-6">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
         <div>
           <div className="flex items-center space-x-2">
             <h2 className="text-xl font-bold text-white tracking-tight">External REST API & AT AI Integration Hub</h2>
@@ -385,6 +417,8 @@ export const ApiExplorerView: React.FC<ApiExplorerViewProps> = ({ onRefreshAll }
           </div>
         </div>
       </div>
+        </div>
+      )}
     </div>
   );
 };

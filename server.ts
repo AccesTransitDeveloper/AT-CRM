@@ -17,6 +17,8 @@ import {
   generateGatherResultTwiML, 
   sendTelegramCancellationAlert 
 } from "./server/proximityCallService";
+import { adminPanelClient } from "./server/adminPanelClient";
+import { syncEngine } from "./server/syncEngine";
 
 
 export function createApp() {
@@ -68,6 +70,15 @@ export function createApp() {
     const { status, rejectionReason } = req.body;
     const updated = db.updateDriverStatus(req.params.id, status, rejectionReason);
     if (!updated) return res.status(404).json({ error: "Driver not found" });
+
+    // Reverse sync to Clone Admin Panel if driver has external_id
+    if (updated.external_id || updated.externalId) {
+      const extId = updated.external_id || updated.externalId!;
+      adminPanelClient.pushDriverStatusUpdate(extId, status, rejectionReason).catch(err => {
+        console.warn(`[ReverseSync] Failed to push status update for driver ${extId}:`, err.message);
+      });
+    }
+
     res.json(updated);
   });
 
@@ -989,6 +1000,102 @@ export function createApp() {
   });
 
   // =========================================================================
+  // CLONE ADMIN PANEL REST API INTEGRATION LAYER
+  // =========================================================================
+
+  // 1. Get connection & auth health status
+  app.get("/api/integration/status", (req, res) => {
+    res.json(adminPanelClient.getStatus());
+  });
+
+  // 2. Get integration configuration (masked secrets)
+  app.get("/api/integration/config", (req, res) => {
+    res.json(adminPanelClient.getConfig());
+  });
+
+  // 3. Update configuration (e.g. rate limits or polling frequencies)
+  app.put("/api/integration/config", (req, res) => {
+    const updated = adminPanelClient.updateConfig(req.body);
+    res.json(updated);
+  });
+
+  // 4. Manually trigger Live Orders Poll
+  app.post("/api/integration/sync/live-orders", async (req, res) => {
+    try {
+      const result = await syncEngine.syncLiveOrders();
+      res.json({
+        success: true,
+        message: `Polled live orders successfully (${result.updated} updated, ${result.created} new)`,
+        result
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Failed to sync live orders" });
+    }
+  });
+
+  // 5. Manually trigger Driver Profiles Sync
+  app.post("/api/integration/sync/drivers", async (req, res) => {
+    try {
+      const result = await syncEngine.syncDrivers();
+      res.json({
+        success: true,
+        message: `Synchronized driver profiles successfully (${result.updated} updated, ${result.created} new)`,
+        result
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Failed to sync driver profiles" });
+    }
+  });
+
+  // 6. Force refresh JWT authentication token
+  app.post("/api/integration/auth/refresh", async (req, res) => {
+    try {
+      const result = await adminPanelClient.authenticate(true);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Authentication token refresh failed" });
+    }
+  });
+
+  // 7. Test connection & credentials
+  app.post("/api/integration/auth/test", async (req, res) => {
+    try {
+      const result = await adminPanelClient.authenticate(false);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Connection test failed" });
+    }
+  });
+
+  // 8. Get Integration & Sync Audit Logs
+  app.get("/api/integration/logs", (req, res) => {
+    const { type, status } = req.query as Record<string, string>;
+    const logs = adminPanelClient.getLogs({ type, status });
+    res.json(logs);
+  });
+
+  // 9. Get Field Mapping Definitions schema
+  app.get("/api/integration/mappings", (req, res) => {
+    res.json(syncEngine.getFieldMappings());
+  });
+
+  // 10. Ingest Webhook events from Clone Admin Panel
+  app.post("/api/integration/webhook", async (req, res) => {
+    try {
+      const result = adminPanelClient.handleIncomingWebhook(req.body);
+      // Trigger sync if order or driver event
+      if (req.body?.entity === 'order') {
+        syncEngine.syncLiveOrders().catch(console.error);
+      } else if (req.body?.entity === 'driver') {
+        syncEngine.syncDrivers().catch(console.error);
+      }
+      res.json(result);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || "Failed to process webhook" });
+    }
+  });
+
+  // =========================================================================
   // INTERNAL CRM AI AGENT ("JARVIS") ENDPOINTS
   // =========================================================================
 
@@ -1408,6 +1515,10 @@ export async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Accessible Transit CRM Server running on http://localhost:${PORT}`);
+    // Start background integration synchronization workers
+    syncEngine.start().catch(err => {
+      console.error("Failed to start syncEngine workers:", err);
+    });
   });
 }
 

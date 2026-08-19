@@ -472,5 +472,30 @@ export const api = {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   }),
-  getLiveLocations: () => request<any[]>('/api/employees/location/live?role=admin')
+  getLiveLocations: () => request<any[]>('/api/employees/location/live?role=admin'),
+
+  // =========================================================================
+  // CLONE APP ADMIN PANEL REST API INTEGRATION
+  // =========================================================================
+  getIntegrationStatus: () => request<any>('/api/integration/status'),
+  getIntegrationConfig: () => request<any>('/api/integration/config'),
+  updateIntegrationConfig: (config: any) => request<any>('/api/integration/config', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config)
+  }),
+  syncLiveOrders: () => request<any>('/api/integration/sync/live-orders', { method: 'POST' }),
+  syncDrivers: () => request<any>('/api/integration/sync/drivers', { method: 'POST' }),
+  refreshIntegrationAuth: () => request<any>('/api/integration/auth/refresh', { method: 'POST' }),
+  testIntegrationConnection: () => request<any>('/api/integration/auth/test', { method: 'POST' }),
+  getIntegrationLogs: (params?: { type?: string; status?: string }) => {
+    const qs = params ? '?' + new URLSearchParams(params as any).toString() : '';
+    return request<any[]>(`/api/integration/logs${qs}`);
+  },
+  getFieldMappings: () => request<any[]>('/api/integration/mappings'),
+  sendIntegrationWebhook: (payload: any) => request<any>('/api/integration/webhook', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
 };

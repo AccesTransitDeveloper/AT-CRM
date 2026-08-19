@@ -279,12 +279,9 @@ export const DriverDetailModal: React.FC<DriverDetailModalProps> = ({
             {/* Driver Identity */}
             <div className="flex items-start sm:items-center gap-4">
               <div className="relative shrink-0">
-                <img 
-                  src={driver.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80'} 
-                  alt={driver.fullName}
-                  referrerPolicy="no-referrer"
-                  className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover ring-3 ring-slate-700 shadow-md bg-slate-800"
-                />
+                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-sky-600 via-indigo-600 to-slate-800 flex items-center justify-center font-bold text-xl sm:text-2xl text-white shadow-lg ring-2 ring-slate-700 select-none">
+                  {driver.fullName ? driver.fullName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'DR'}
+                </div>
                 <span className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full ring-2 ring-slate-900 ${driver.isOnline ? 'bg-emerald-500' : 'bg-slate-500'}`} />
               </div>
 

@@ -240,11 +240,9 @@ export const ReferralLandingPage: React.FC<ReferralLandingPageProps> = ({
           
           {/* INVITER PERSONA BADGE */}
           <div className="inline-flex items-center gap-3 p-1.5 pr-4 rounded-full bg-slate-900/90 border border-slate-700 shadow-xl mb-6 backdrop-blur-md">
-            <img
-              src={inviter.avatarUrl}
-              alt={inviter.name}
-              className="w-10 h-10 rounded-full object-cover border-2 border-sky-400"
-            />
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center font-bold text-white text-xs border-2 border-sky-400 select-none shadow-inner">
+              {inviter.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+            </div>
             <div className="text-left text-xs">
               <div className="font-bold text-white flex items-center gap-1.5">
                 <span>{inviter.name}</span>

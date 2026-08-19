@@ -148,6 +148,8 @@ export interface DriverActivityAnalytics {
 
 export interface Driver {
   id: string;
+  external_id?: string;
+  externalId?: string;
   fullName: string;
   phone: string;
   email: string;
@@ -197,6 +199,8 @@ export type ProximityCallResult = 'confirmed' | 'cancelled_by_passenger' | 'no_a
 
 export interface Order {
   id: string;
+  external_id?: string;
+  externalId?: string;
   orderNumber: string;
   passengerName: string;
   passengerPhone: string;
@@ -402,6 +406,8 @@ export interface PromoCampaign {
 
 export interface PassengerSegment {
   id: string;
+  external_id?: string;
+  externalId?: string;
   passengerName: string;
   phone: string;
   totalTrips: number;
@@ -1078,5 +1084,155 @@ export interface EmployeeLocationUpdatePayload {
   boroughOrArea?: string;
   deviceInfo?: string;
 }
+
+// =========================================================================
+// CLONE APP ADMIN PANEL INTEGRATION & SYNCHRONIZATION TYPES
+// =========================================================================
+
+export type IntegrationConnectionStatus = 'connected' | 'refreshing' | 'degraded' | 'offline' | 'unauthorized';
+
+export type SyncLogType = 
+  | 'auth_token_issued' 
+  | 'auth_token_refreshed' 
+  | 'auth_error' 
+  | 'orders_poll' 
+  | 'driver_profile_sync' 
+  | 'reverse_sync' 
+  | 'webhook_received' 
+  | 'conflict_resolved' 
+  | 'rate_limit_throttle';
+
+export interface SyncAuditLog {
+  id: string;
+  timestamp: string;
+  type: SyncLogType;
+  status: 'success' | 'warning' | 'error' | 'info';
+  summary: string;
+  details?: string;
+  recordsCount?: number;
+  durationMs?: number;
+  endpoint?: string;
+}
+
+export interface IntegrationConfig {
+  baseUrl: string;
+  authMode: 'jwt' | 'oauth2_client_credentials';
+  clientIdMasked: string;
+  liveOrderPollIntervalMs: number;
+  driverProfileSyncIntervalMs: number;
+  enableWebhooks: boolean;
+  enableReverseSync: boolean;
+  rateLimitPerMinute: number;
+  isConfigured: boolean;
+}
+
+export interface IntegrationStatus {
+  status: IntegrationConnectionStatus;
+  statusMessage: string;
+  mode: 'live_cloud' | 'simulation_sandbox';
+  auth: {
+    authenticated: boolean;
+    tokenExpiresAt?: string;
+    tokenExpiresInSeconds?: number;
+    lastTokenRefresh?: string;
+    authMethod: string;
+    refreshTokenValid: boolean;
+    consecutiveAuthErrors: number;
+  };
+  sync: {
+    lastLiveOrdersSync?: string;
+    lastDriversSync?: string;
+    livePollingActive: boolean;
+    pollIntervalSeconds: number;
+    profileSyncIntervalMinutes: number;
+    totalSyncedDrivers: number;
+    totalSyncedOrders: number;
+    totalSyncErrors: number;
+    lastError?: string;
+    lastErrorTime?: string;
+    isDegraded: boolean;
+    downtimeSeconds: number;
+  };
+  rateLimit: {
+    requestsLastMinute: number;
+    maxPerMinute: number;
+  };
+}
+
+export interface FieldMappingDefinition {
+  entity: 'Driver' | 'Order' | 'Passenger';
+  crmField: string;
+  externalField: string;
+  dataType: string;
+  sourceOfTruth: 'clone_admin_panel' | 'crm' | 'bidirectional';
+  description: string;
+}
+
+export interface ExternalCloneDriverPayload {
+  id: string; // external_id
+  full_name: string;
+  phone: string;
+  email?: string;
+  tlc_license_number: string;
+  status: 'active' | 'pending_approval' | 'suspended' | 'rejected' | 'offline';
+  vehicle: {
+    type: string;
+    make_model: string;
+    plate: string;
+    year: number;
+    is_wheelchair_accessible: boolean;
+  };
+  operating_boroughs?: string[];
+  rating?: number;
+  total_trips?: number;
+  is_online?: boolean;
+  location?: {
+    lat: number;
+    lng: number;
+    neighborhood: string;
+    updated_at: string;
+  };
+  updated_at?: string;
+}
+
+export interface ExternalCloneOrderPayload {
+  id: string; // external_id
+  order_code: string;
+  status: 'NEW' | 'ACCEPTED' | 'EN_ROUTE' | 'ON_TRIP' | 'COMPLETED' | 'CANCELLED';
+  passenger: {
+    name: string;
+    phone: string;
+  };
+  driver?: {
+    external_id?: string;
+    name?: string;
+    phone?: string;
+  };
+  pickup: {
+    address: string;
+    neighborhood: string;
+    lat?: number;
+    lng?: number;
+  };
+  dropoff: {
+    address: string;
+    neighborhood: string;
+    lat?: number;
+    lng?: number;
+  };
+  fare: {
+    total_amount: number;
+    rate?: number;
+    copay?: number;
+    commission_rate?: number;
+  };
+  vehicle_type?: string;
+  requires_wav?: boolean;
+  created_at: string;
+  updated_at: string;
+  completed_at?: string;
+  cancellation_reason?: string;
+}
+
 
 

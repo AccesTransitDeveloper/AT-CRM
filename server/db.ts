@@ -1313,8 +1313,11 @@ class DatabaseStore {
   }
 
   createDriver(data: Partial<Driver>): Driver {
+    const newId = data.id || `drv-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
     const newDriver: Driver = {
-      id: `drv-${Date.now()}`,
+      id: newId,
+      external_id: data.external_id || data.externalId,
+      externalId: data.externalId || data.external_id,
       fullName: data.fullName || 'New Driver',
       phone: data.phone || '',
       email: data.email || '',
@@ -1465,8 +1468,10 @@ class DatabaseStore {
     const driverPayout = Number((rate - commAmount).toFixed(2));
 
     const newOrder: Order = {
-      id: `ord-${Date.now()}`,
-      orderNumber: `AT-2026-${count}`,
+      id: data.id || `ord-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
+      external_id: data.external_id || data.externalId,
+      externalId: data.externalId || data.external_id,
+      orderNumber: data.orderNumber || `AT-2026-${count}`,
       passengerName: data.passengerName || 'Accessible Transit Passenger',
       passengerPhone: data.passengerPhone || '+1 (718) 555-0000',
       pickupAddress: data.pickupAddress || '37th Ave, Jackson Heights, NY',
