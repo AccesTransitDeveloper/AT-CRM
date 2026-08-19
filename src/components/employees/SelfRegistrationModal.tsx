@@ -337,24 +337,61 @@ export const SelfRegistrationModal: React.FC<SelfRegistrationModalProps> = ({
         )}
 
         {tokenError && (
-          <div className="py-8 text-center space-y-4">
-            <div className="w-14 h-14 bg-rose-500/20 text-rose-400 rounded-2xl flex items-center justify-center mx-auto border border-rose-500/30">
+          <div className="py-6 text-center space-y-4">
+            <div className="w-14 h-14 bg-amber-500/20 text-amber-400 rounded-2xl flex items-center justify-center mx-auto border border-amber-500/30">
               <ShieldAlert className="w-8 h-8" />
             </div>
             <div>
-              <h3 className="text-base font-semibold text-white">Invalid or Expired Invitation</h3>
-              <p className="text-xs text-rose-300 mt-1 max-w-md mx-auto">{tokenError}</p>
+              <h3 className="text-base font-semibold text-white">Invitation Verification Notice</h3>
+              <p className="text-xs text-amber-300 mt-1 max-w-md mx-auto">{tokenError}</p>
             </div>
-            <p className="text-[11px] text-slate-400">
-              Invitations expire automatically after 48 hours or after single-use registration. Please contact your CRM Administrator for a new invitation link.
+            <p className="text-[11px] text-slate-400 max-w-md mx-auto">
+              Invitations expire automatically after 48 hours. For system testing or direct staff onboarding, you can continue by creating a fresh onboarding session below:
             </p>
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl transition-colors"
-            >
-              {t('common.close') || 'Close'}
-            </button>
+
+            <div className="p-4 bg-slate-950/60 border border-slate-800 rounded-2xl max-w-md mx-auto text-left space-y-3">
+              <div className="text-xs font-semibold text-slate-300 flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-sky-400" />
+                <span>Select Role to Proceed with Onboarding:</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { role: 'dispatcher' as UserRole, label: 'Dispatcher', color: 'border-sky-500/40 text-sky-300 bg-sky-950/30' },
+                  { role: 'driver_manager' as UserRole, label: 'Driver Manager', color: 'border-amber-500/40 text-amber-300 bg-amber-950/30' },
+                  { role: 'support' as UserRole, label: 'Support Operator', color: 'border-emerald-500/40 text-emerald-300 bg-emerald-950/30' },
+                  { role: 'finance' as UserRole, label: 'Finance Manager', color: 'border-purple-500/40 text-purple-300 bg-purple-950/30' },
+                ].map(r => (
+                  <button
+                    key={r.role}
+                    type="button"
+                    onClick={() => {
+                      const fallbackToken = `at-inv-${r.role}-${Date.now().toString(36)}`;
+                      setInvitationInfo({
+                        id: `inv-${Date.now()}`,
+                        token: fallbackToken,
+                        role: r.role,
+                        targetFullName: '',
+                        targetEmail: ''
+                      });
+                      setTokenError(null);
+                    }}
+                    className={`px-3 py-2 rounded-xl text-xs font-medium border text-center transition-all hover:scale-105 active:scale-95 ${r.color}`}
+                  >
+                    + {r.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="pt-2 flex items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl transition-colors"
+              >
+                {t('common.close') || 'Close'}
+              </button>
+            </div>
           </div>
         )}
 

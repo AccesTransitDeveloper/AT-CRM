@@ -37,6 +37,7 @@ import {
   Globe
 } from 'lucide-react';
 import { ReferralShareModal } from './ReferralShareModal';
+import { ReferralCharts } from './ReferralCharts';
 import { 
   AreaChart, 
   Area, 
@@ -325,6 +326,9 @@ export const ReferralProgramDashboard: React.FC<ReferralProgramDashboardProps> =
           </div>
         </div>
       </div>
+
+      {/* Interactive Referral Growth & Advocate Leaderboard Charts */}
+      <ReferralCharts rewards={rewards} advocates={stats?.topAdvocates || []} />
 
       {/* DASHBOARD NAVIGATION SUBTABS */}
       <div className="flex items-center gap-2 border-b border-gray-200 overflow-x-auto">

@@ -192,6 +192,9 @@ export type OrderStatus = 'created' | 'driver_assigned' | 'en_route' | 'on_trip'
 
 export type BrokerConfirmationStatus = 'finding_driver' | 'sent_to_broker' | 'confirmed';
 
+export type ProximityCallStatus = 'pending' | 'calling' | 'completed' | 'failed' | 'cancelled';
+export type ProximityCallResult = 'confirmed' | 'cancelled_by_passenger' | 'no_answer' | 'failed';
+
 export interface Order {
   id: string;
   orderNumber: string;
@@ -212,10 +215,12 @@ export interface Order {
   brokerId?: string;
   brokerName?: string;
   brokerConfirmationStatus?: BrokerConfirmationStatus;
-  fareAmount: number;
+  rate?: number; // Base amount paid by broker
+  copay?: number; // Copay collected in cash from passenger directly by driver
+  fareAmount: number; // Total Fare = Rate + Copay
   atCommissionRate: number; // typically 0.15 (15%)
-  atCommissionAmount: number;
-  driverPayout: number;
+  atCommissionAmount: number; // Total Fare * 0.15 (rounded to cent)
+  driverPayout: number; // Rate - atCommissionAmount
   scheduledTime?: string;
   createdAt: string;
   updatedAt: string;
@@ -223,6 +228,50 @@ export interface Order {
   cancellationReason?: string;
   notes?: string;
   specialAssistanceNotes?: string;
+  // Proximity Call & IVR state
+  callTriggered?: boolean;
+  callStatus?: ProximityCallStatus;
+  callResult?: ProximityCallResult;
+  callTriggeredAt?: string;
+  callDurationSeconds?: number;
+  callDistanceMiles?: number;
+  lastDriverDistanceMiles?: number;
+}
+
+export interface ProximityCallLog {
+  id: string;
+  orderId: string;
+  orderNumber: string;
+  brokerName: string;
+  passengerName: string;
+  passengerPhone: string;
+  driverId: string;
+  driverName: string;
+  distanceMiles: number;
+  triggerRadiusMiles: number;
+  callSid?: string;
+  status: 'initiated' | 'ringing' | 'in_progress' | 'completed' | 'cancelled' | 'failed';
+  dtmfPressed?: string;
+  callResult: ProximityCallResult;
+  telegramNotified: boolean;
+  telegramMessageId?: string;
+  timestamp: string;
+  durationSeconds?: number;
+  notes?: string;
+}
+
+export interface ProximityCallSettings {
+  enabled: boolean;
+  triggerRadiusMiles: number; // default 0.3
+  retryCount: number;
+  ttsLanguage: string; // 'ru-RU'
+  ttsVoice: string; // 'Polly.Tatyana'
+  customMessagePrompt: string;
+  telegramAlertsEnabled: boolean;
+  isTwilioConfigured: boolean;
+  isTelegramConfigured: boolean;
+  configuredTwilioNumber?: string;
+  configuredTelegramChatId?: string;
 }
 
 export interface Broker {
@@ -233,6 +282,7 @@ export interface Broker {
   email: string;
   phone: string;
   commissionRate: number; // e.g. 0.15
+  defaultCopay?: number; // Default passenger cash copay e.g. 5.00
   portalUrl?: string;
   activeOrdersCount: number;
   totalOrdersCount: number;
@@ -278,9 +328,11 @@ export interface CommissionSettlement {
   orderNumber: string;
   brokerName: string;
   tripDate: string;
-  fare: number;
-  atCommission15Pct: number;
-  driverPayout: number;
+  rate?: number; // Base rate from broker
+  copay?: number; // Cash copay from passenger
+  fare: number; // Total Fare = Rate + Copay
+  atCommission15Pct: number; // Total Fare * 15%
+  driverPayout: number; // Rate - atCommission15Pct
   status: 'pending' | 'settled' | 'invoiced';
   payoutDate?: string;
 }

@@ -11,13 +11,20 @@ import {
   generateDriverAiAssessmentWithGemini,
   processAiAgentCommand
 } from "./server/gemini";
+import { generateTlcTripRecordCsv } from "./src/lib/tlcExport";
+import { 
+  generateArrivalTwiML, 
+  generateGatherResultTwiML, 
+  sendTelegramCancellationAlert 
+} from "./server/proximityCallService";
 
 
 export function createApp() {
   const app = express();
 
-  // JSON Body parsing
+  // JSON & URL-Encoded Form body parsing for Webhooks (Twilio & CRM)
   app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
 
   // Health check
   app.get("/api/health", (req, res) => {
@@ -175,6 +182,160 @@ export function createApp() {
     const deleted = db.deleteOrder(req.params.id);
     if (!deleted) return res.status(404).json({ error: "Order not found" });
     res.json({ success: true, message: "Order deleted successfully" });
+  });
+
+  // TLC FHV TRIP RECORD CSV EXPORT ENDPOINT (Base B03669)
+  app.get("/api/orders/export/tlc-csv", (req, res) => {
+    try {
+      const orders = db.getOrders();
+      const drivers = db.getDrivers();
+      const { csv, filename } = generateTlcTripRecordCsv(orders, drivers);
+
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.status(200).send("\uFEFF" + csv);
+    } catch (err: any) {
+      console.error("Error exporting TLC CSV:", err);
+      res.status(500).json({ error: "Failed to generate TLC CSV report", details: err?.message });
+    }
+  });
+
+  // ========================================================
+  // MTA PROXIMITY CALLING & TWILIO IVR & TELEGRAM ALERTS API
+  // ========================================================
+
+  // 1. Get proximity calling settings
+  app.get("/api/proximity-calls/settings", (req, res) => {
+    res.json(db.getProximityCallSettings());
+  });
+
+  // 2. Update proximity calling settings
+  app.put("/api/proximity-calls/settings", (req, res) => {
+    try {
+      const updated = db.updateProximityCallSettings(req.body);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // 3. Get proximity call audit logs
+  app.get("/api/proximity-calls/logs", (req, res) => {
+    const { orderId, result, status } = req.query as Record<string, string>;
+    const logs = db.getProximityCallLogs({ orderId, result, status });
+    res.json(logs);
+  });
+
+  // 4. Manually or programmatically trigger proximity call for an MTA order
+  app.post("/api/proximity-calls/trigger", async (req, res) => {
+    try {
+      const { orderId, distanceMiles, triggerReason } = req.body;
+      if (!orderId) {
+        return res.status(400).json({ error: "orderId is required" });
+      }
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const result = await db.triggerProximityCall(orderId, {
+        distanceMiles: distanceMiles ? Number(distanceMiles) : undefined,
+        triggerReason,
+        baseUrl
+      });
+      res.json(result);
+    } catch (err: any) {
+      console.error("Error triggering proximity call:", err);
+      res.status(500).json({ error: err.message || "Failed to trigger proximity call" });
+    }
+  });
+
+  // 5. Interactive DTMF Simulator (Passenger pressing 1 = Confirm, 2 = Cancel)
+  app.post("/api/proximity-calls/simulate-dtmf", async (req, res) => {
+    try {
+      const { orderId, digits, callSid } = req.body;
+      if (!orderId || !digits) {
+        return res.status(400).json({ error: "orderId and digits ('1' or '2') are required" });
+      }
+      const result = await db.handleTwilioGatherResult(orderId, String(digits), callSid);
+      res.json(result);
+    } catch (err: any) {
+      console.error("Error handling DTMF simulation:", err);
+      res.status(500).json({ error: err.message || "Failed to process DTMF input" });
+    }
+  });
+
+  // 6. Evaluate all active MTA orders based on driver proximity
+  app.post("/api/proximity-calls/evaluate-proximity", async (req, res) => {
+    try {
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const results = await db.checkAndTriggerProximityCalls(baseUrl);
+      res.json(results);
+    } catch (err: any) {
+      console.error("Error checking proximity calls:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 7. Test Telegram Bot connectivity & alert template
+  app.post("/api/proximity-calls/test-telegram", async (req, res) => {
+    try {
+      const sampleOrder = db.getOrders().find(o => o.type === 'mta_broker' || o.source === 'broker') || db.getOrders()[0];
+      const sampleDriver = sampleOrder?.driverId ? db.getDriverById(sampleOrder.driverId) : db.getDrivers()[0];
+
+      const tgResult = await sendTelegramCancellationAlert(sampleOrder, sampleDriver, {
+        distanceMiles: 0.28
+      });
+
+      res.json({
+        success: tgResult.sent,
+        messageId: tgResult.messageId,
+        isSimulated: tgResult.isSimulated,
+        error: tgResult.error,
+        configured: Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID)
+      });
+    } catch (err: any) {
+      console.error("Error testing Telegram alert:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 8. TWILIO WEBHOOK: TwiML Voice Greeting & Gather (GET & POST)
+  const handleTwilioTwiml = (req: express.Request, res: express.Response) => {
+    const orderId = (req.query.orderId || req.body.orderId || '') as string;
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    const twiml = generateArrivalTwiML(orderId, baseUrl);
+    res.setHeader("Content-Type", "text/xml; charset=utf-8");
+    res.status(200).send(twiml);
+  };
+  app.get("/api/twilio/voice/twiml", handleTwilioTwiml);
+  app.post("/api/twilio/voice/twiml", handleTwilioTwiml);
+
+  // 9. TWILIO WEBHOOK: Gather Response (DTMF Digit entered by passenger)
+  app.post("/api/twilio/voice/gather", async (req, res) => {
+    try {
+      const digits = (req.body.Digits || req.query.Digits || '1') as string;
+      const orderId = (req.query.orderId || req.body.orderId || '') as string;
+      const callSid = (req.body.CallSid || '') as string;
+
+      console.log(`[Twilio IVR Gather Webhook] Order: ${orderId}, Digits: ${digits}, CallSid: ${callSid}`);
+
+      if (orderId) {
+        await db.handleTwilioGatherResult(orderId, digits, callSid);
+      }
+
+      const twiml = generateGatherResultTwiML(digits);
+      res.setHeader("Content-Type", "text/xml; charset=utf-8");
+      res.status(200).send(twiml);
+    } catch (err: any) {
+      console.error("Error in Twilio Gather webhook:", err);
+      const fallbackTwiml = `<?xml version="1.0" encoding="UTF-8"?><Response><Say language="ru-RU">Спасибо.</Say><Hangup/></Response>`;
+      res.setHeader("Content-Type", "text/xml; charset=utf-8");
+      res.status(200).send(fallbackTwiml);
+    }
+  });
+
+  // 10. TWILIO WEBHOOK: Call Status Callback
+  app.post("/api/twilio/voice/status", (req, res) => {
+    const { CallSid, CallStatus, CallDuration } = req.body;
+    console.log(`[Twilio Call Status Webhook] CallSid: ${CallSid}, Status: ${CallStatus}, Duration: ${CallDuration}s`);
+    res.status(200).send("OK");
   });
 
   // BROKERS API
@@ -1095,40 +1256,46 @@ export function createApp() {
 
   // Invitation resolution / verification endpoint (tracks first-seen IP)
   app.get("/api/employees/invite-preview/:token", (req, res) => {
-    const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0] || req.socket.remoteAddress || "198.51.100.42";
-    const userAgent = req.headers["user-agent"] || "Browser";
-    
-    const inv = db.trackInvitationFirstSeen(req.params.token, clientIp, userAgent);
-    if (!inv) {
-      return res.status(404).json({ error: "Invalid invitation link. Link not found." });
-    }
-
-    if (inv.status === 'used') {
-      return res.status(410).json({ error: "This invitation link has already been used.", status: 'used' });
-    }
-
-    if (inv.status === 'revoked') {
-      return res.status(403).json({ error: "This invitation link has been revoked by an administrator.", status: 'revoked' });
-    }
-
-    if (inv.status === 'expired' || new Date(inv.expiresAt) < new Date()) {
-      return res.status(410).json({ error: "This invitation link expired (48-hour limit exceeded).", status: 'expired' });
-    }
-
-    res.json({
-      valid: true,
-      invitation: {
-        id: inv.id,
-        token: inv.token,
-        role: inv.role,
-        expiresAt: inv.expiresAt,
-        targetEmail: inv.targetEmail,
-        targetFullName: inv.targetFullName,
-        firstSeenIp: inv.firstSeenIp,
-        currentIp: clientIp,
-        ipMismatch: inv.firstSeenIp && inv.firstSeenIp !== clientIp
+    try {
+      const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0] || req.socket.remoteAddress || "198.51.100.42";
+      const userAgent = req.headers["user-agent"] || "Browser";
+      const token = req.params.token;
+      
+      const inv = db.trackInvitationFirstSeen(token, clientIp, userAgent);
+      if (!inv) {
+        return res.status(404).json({ error: "Invalid invitation link. Link not found." });
       }
-    });
+
+      if (inv.status === 'used') {
+        return res.status(410).json({ error: "This invitation link has already been used.", status: 'used' });
+      }
+
+      if (inv.status === 'revoked') {
+        return res.status(403).json({ error: "This invitation link has been revoked by an administrator.", status: 'revoked' });
+      }
+
+      if (inv.status === 'expired' || new Date(inv.expiresAt) < new Date()) {
+        return res.status(410).json({ error: "This invitation link expired (48-hour limit exceeded).", status: 'expired' });
+      }
+
+      res.json({
+        valid: true,
+        invitation: {
+          id: inv.id,
+          token: inv.token,
+          role: inv.role,
+          expiresAt: inv.expiresAt,
+          targetEmail: inv.targetEmail,
+          targetFullName: inv.targetFullName,
+          firstSeenIp: inv.firstSeenIp,
+          currentIp: clientIp,
+          ipMismatch: inv.firstSeenIp && inv.firstSeenIp !== clientIp
+        }
+      });
+    } catch (err: any) {
+      console.error("Invite Preview Error:", err);
+      res.status(400).json({ error: err?.message || "Failed to process invitation" });
+    }
   });
 
   // Self-Registration endpoint with Face Enrollment

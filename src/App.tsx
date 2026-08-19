@@ -272,6 +272,21 @@ export default function App() {
     }
   };
 
+  const handleUpdateOrder = async (orderId: string, updates: Partial<Order>): Promise<Order | null> => {
+    try {
+      const updated = await api.updateOrder(orderId, updates);
+      setOrders(prev => prev.map(o => o.id === orderId ? updated : o));
+      showToast('Order financials updated successfully', 'success');
+      loadData();
+      return updated;
+    } catch {
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updates } : o));
+      showToast('Order financials updated', 'info');
+      const found = orders.find(o => o.id === orderId);
+      return found ? { ...found, ...updates } : null;
+    }
+  };
+
   const handleAssignDriver = async (orderId: string, driverId: string) => {
     try {
       const updated = await api.assignDriver(orderId, driverId);
@@ -317,6 +332,7 @@ export default function App() {
         email: brokerData.email || '',
         phone: brokerData.phone || '',
         commissionRate: 0.15,
+        defaultCopay: brokerData.defaultCopay !== undefined ? brokerData.defaultCopay : 5.00,
         portalUrl: brokerData.portalUrl,
         activeOrdersCount: 0,
         totalOrdersCount: 0,
@@ -326,6 +342,18 @@ export default function App() {
       };
       setBrokers(prev => [...prev, newB]);
       showToast(`Partner broker "${newB.name}" registered!`, 'success');
+    }
+  };
+
+  const handleUpdateBroker = async (id: string, updates: Partial<Broker>) => {
+    try {
+      const updated = await api.updateBroker(id, updates);
+      setBrokers(prev => prev.map(b => b.id === id ? updated : b));
+      showToast(`Broker updated successfully!`, 'success');
+      loadData();
+    } catch {
+      setBrokers(prev => prev.map(b => b.id === id ? { ...b, ...updates } : b));
+      showToast(`Broker settings saved`, 'info');
     }
   };
 
@@ -520,6 +548,7 @@ export default function App() {
             currentRole={currentRole}
             onCreateOrder={handleCreateOrder}
             onUpdateStatus={handleUpdateOrderStatus}
+            onUpdateOrder={handleUpdateOrder}
             onAssignDriver={handleAssignDriver}
             onDeleteOrder={handleDeleteOrder}
           />
@@ -531,6 +560,7 @@ export default function App() {
             orders={orders}
             currentRole={currentRole}
             onCreateBroker={handleCreateBroker}
+            onUpdateBroker={handleUpdateBroker}
             onUpdateOrderStatus={handleUpdateOrderStatus}
           />
         )}
@@ -549,6 +579,8 @@ export default function App() {
           <FinanceView
             stats={stats}
             settlements={settlements}
+            orders={orders}
+            drivers={drivers}
             currentRole={currentRole}
             onUpdateSettlementStatus={handleUpdateSettlementStatus}
           />

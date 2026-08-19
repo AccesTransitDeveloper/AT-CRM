@@ -9,6 +9,7 @@ import {
   AdCopyVariant 
 } from '../../types';
 import { api } from '../../lib/api';
+import { MarketingCharts } from './MarketingCharts';
 import { 
   Sparkles, 
   Flame, 
@@ -406,6 +407,9 @@ export const MarketingView: React.FC<MarketingViewProps> = ({ currentRole }) => 
       {/* ========================================================================= */}
       {activeSubSection === 'analytics' && analyticsData && (
         <div className="space-y-6">
+          {/* Interactive Marketing & ROI Charts */}
+          <MarketingCharts analyticsData={analyticsData} campaigns={campaigns} />
+
           {/* Top Row: Demand Heatmap & Underserved Zones */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Heatmap Card (2 cols) */}

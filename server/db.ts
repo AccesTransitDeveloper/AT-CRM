@@ -50,8 +50,18 @@ import {
   FaceVerificationResult,
   EmployeeLocationConsent,
   EmployeeLiveLocation,
-  EmployeeLocationUpdatePayload
+  EmployeeLocationUpdatePayload,
+  ProximityCallLog,
+  ProximityCallSettings,
+  ProximityCallResult,
+  ProximityCallStatus
 } from '../src/types';
+import {
+  calculateDistanceMiles,
+  getPickupCoordinates,
+  triggerTwilioPassengerCall,
+  sendTelegramCancellationAlert
+} from './proximityCallService';
 import { 
   initialComplianceDocuments,
   initialComplianceAuditLogs,
@@ -295,12 +305,13 @@ export const initialBrokers: Broker[] = [
     email: 'mta-ops@triplinkmobility.com',
     phone: '+1 (212) 555-8900',
     commissionRate: 0.15,
+    defaultCopay: 5.00,
     portalUrl: 'https://portal.triplinkmobility.com/at-dispatch',
     activeOrdersCount: 4,
     totalOrdersCount: 842,
     totalSettledAmount: 38450.00,
     status: 'active',
-    notes: 'Direct API dispatch feed with 15% guaranteed AT dispatch margin.',
+    notes: 'Direct API dispatch feed with 15% guaranteed AT dispatch margin. Default copay $5.00 cash.',
     createdAt: '2024-01-15'
   },
   {
@@ -311,12 +322,13 @@ export const initialBrokers: Broker[] = [
     email: 'brokerage@mylerides.com',
     phone: '+1 (646) 555-3211',
     commissionRate: 0.15,
+    defaultCopay: 2.75,
     portalUrl: 'https://partners.mylerides.com/accessible-transit',
     activeOrdersCount: 2,
     totalOrdersCount: 420,
     totalSettledAmount: 19800.00,
     status: 'active',
-    notes: 'Queens hospital runs (Elmhurst, Queens Hospital Center, Jamaica Hospital).',
+    notes: 'Queens hospital runs (Elmhurst, Queens Hospital Center, Jamaica Hospital). Default copay $2.75 cash.',
     createdAt: '2024-05-10'
   },
   {
@@ -327,12 +339,13 @@ export const initialBrokers: Broker[] = [
     email: 'dispatch@metrocaretransit.org',
     phone: '+1 (718) 555-9988',
     commissionRate: 0.15,
+    defaultCopay: 0.00,
     portalUrl: 'https://dispatch.metrocaretransit.org',
     activeOrdersCount: 1,
     totalOrdersCount: 195,
     totalSettledAmount: 9240.00,
     status: 'active',
-    notes: 'Non-emergency medical transport (NEMT) with wheelchair requirements.',
+    notes: 'Non-emergency medical transport (NEMT) with wheelchair requirements. Zero copay.',
     createdAt: '2024-09-01'
   }
 ];
@@ -358,10 +371,12 @@ export const initialOrders: Order[] = [
     brokerId: 'brk-01',
     brokerName: 'TripLink Mobility (MTA Paratransit)',
     brokerConfirmationStatus: 'confirmed',
+    rate: 53.50,
+    copay: 5.00,
     fareAmount: 58.50,
     atCommissionRate: 0.15,
     atCommissionAmount: 8.78,
-    driverPayout: 49.72,
+    driverPayout: 44.72,
     createdAt: '2026-02-15T13:45:00Z',
     updatedAt: '2026-02-15T14:10:00Z',
     specialAssistanceNotes: 'Passenger is in motorized wheelchair. Door-to-door boarding assist required.'
@@ -383,6 +398,8 @@ export const initialOrders: Order[] = [
     status: 'en_route',
     type: 'standard',
     source: 'at_ai',
+    rate: 46.00,
+    copay: 0.00,
     fareAmount: 46.00,
     atCommissionRate: 0.15,
     atCommissionAmount: 6.90,
@@ -408,10 +425,12 @@ export const initialOrders: Order[] = [
     brokerId: 'brk-02',
     brokerName: 'MyLe Access Brokerage',
     brokerConfirmationStatus: 'finding_driver',
+    rate: 67.00,
+    copay: 5.00,
     fareAmount: 72.00,
     atCommissionRate: 0.15,
     atCommissionAmount: 10.80,
-    driverPayout: 61.20,
+    driverPayout: 56.20,
     createdAt: '2026-02-15T14:12:00Z',
     updatedAt: '2026-02-15T14:12:00Z',
     specialAssistanceNotes: 'Manual folding wheelchair + companion.'
@@ -433,6 +452,8 @@ export const initialOrders: Order[] = [
     driverPhone: '+1 (917) 555-3391',
     type: 'standard',
     source: 'app',
+    rate: 34.50,
+    copay: 0.00,
     fareAmount: 34.50,
     atCommissionRate: 0.15,
     atCommissionAmount: 5.18,
@@ -459,10 +480,12 @@ export const initialOrders: Order[] = [
     brokerId: 'brk-01',
     brokerName: 'TripLink Mobility (MTA Paratransit)',
     brokerConfirmationStatus: 'confirmed',
+    rate: 60.00,
+    copay: 4.00,
     fareAmount: 64.00,
     atCommissionRate: 0.15,
     atCommissionAmount: 9.60,
-    driverPayout: 54.40,
+    driverPayout: 50.40,
     createdAt: '2026-02-15T11:20:00Z',
     updatedAt: '2026-02-15T12:35:00Z',
     completedAt: '2026-02-15T12:35:00Z'
@@ -627,9 +650,11 @@ export const sampleSettlements: CommissionSettlement[] = [
     orderNumber: 'AT-2026-0814',
     brokerName: 'TripLink Mobility (MTA Paratransit)',
     tripDate: '2026-02-15',
+    rate: 53.50,
+    copay: 5.00,
     fare: 58.50,
     atCommission15Pct: 8.78,
-    driverPayout: 49.72,
+    driverPayout: 44.72,
     status: 'pending'
   },
   {
@@ -638,9 +663,11 @@ export const sampleSettlements: CommissionSettlement[] = [
     orderNumber: 'AT-2026-0810',
     brokerName: 'TripLink Mobility (MTA Paratransit)',
     tripDate: '2026-02-15',
+    rate: 60.00,
+    copay: 4.00,
     fare: 64.00,
     atCommission15Pct: 9.60,
-    driverPayout: 54.40,
+    driverPayout: 50.40,
     status: 'settled',
     payoutDate: '2026-02-15'
   },
@@ -650,9 +677,11 @@ export const sampleSettlements: CommissionSettlement[] = [
     orderNumber: 'AT-2026-0799',
     brokerName: 'MyLe Access Brokerage',
     tripDate: '2026-02-14',
+    rate: 77.00,
+    copay: 5.00,
     fare: 82.00,
     atCommission15Pct: 12.30,
-    driverPayout: 69.70,
+    driverPayout: 64.70,
     status: 'settled',
     payoutDate: '2026-02-15'
   },
@@ -662,6 +691,8 @@ export const sampleSettlements: CommissionSettlement[] = [
     orderNumber: 'AT-2026-0785',
     brokerName: 'MetroCare Health Transit',
     tripDate: '2026-02-14',
+    rate: 52.00,
+    copay: 0.00,
     fare: 52.00,
     atCommission15Pct: 7.80,
     driverPayout: 44.20,
@@ -861,6 +892,62 @@ class DatabaseStore {
   referralRewards: ReferralReward[] = [...initialReferralRewards];
   commissionLogs: CommissionRateLog[] = [...initialCommissionLogs];
   referralSettings: ReferralProgramSettings = { ...initialReferralSettings };
+  proximityCallSettings: ProximityCallSettings = {
+    enabled: true,
+    triggerRadiusMiles: Number(process.env.PROXIMITY_RADIUS_MILES || 0.3),
+    retryCount: 1,
+    ttsLanguage: 'ru-RU',
+    ttsVoice: 'Polly.Tatyana',
+    customMessagePrompt: 'Здравствуйте, это Accessible Transit. Ваш водитель уже подъезжает. Пожалуйста, выходите. Если хотите отменить поездку, нажмите 2.',
+    telegramAlertsEnabled: true,
+    isTwilioConfigured: Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER),
+    isTelegramConfigured: Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID),
+    configuredTwilioNumber: process.env.TWILIO_PHONE_NUMBER || '+18005550199',
+    configuredTelegramChatId: process.env.TELEGRAM_CHAT_ID || '-1002345678901'
+  };
+  proximityCallLogs: ProximityCallLog[] = [
+    {
+      id: 'call-log-1',
+      orderId: 'ord-901',
+      orderNumber: 'AT-2026-0814',
+      brokerName: 'TripLink Mobility (MTA Paratransit)',
+      passengerName: 'David Lieberman',
+      passengerPhone: '+1 (718) 555-0144',
+      driverId: 'drv-101',
+      driverName: 'Michael Rodriguez',
+      distanceMiles: 0.26,
+      triggerRadiusMiles: 0.3,
+      callSid: 'CA_sample_8829410',
+      status: 'completed',
+      dtmfPressed: '1',
+      callResult: 'confirmed',
+      telegramNotified: false,
+      timestamp: new Date(Date.now() - 42 * 60 * 1000).toISOString(),
+      durationSeconds: 14,
+      notes: 'Пассажир подтвердил выход (DTMF 1)'
+    },
+    {
+      id: 'call-log-2',
+      orderId: 'ord-895',
+      orderNumber: 'AT-2026-0808',
+      brokerName: 'MyLe Paratransit NYC',
+      passengerName: 'Sarah Jenkins',
+      passengerPhone: '+1 (347) 555-8812',
+      driverId: 'drv-103',
+      driverName: 'Elena Ivanova',
+      distanceMiles: 0.28,
+      triggerRadiusMiles: 0.3,
+      callSid: 'CA_sample_7719203',
+      status: 'cancelled',
+      dtmfPressed: '2',
+      callResult: 'cancelled_by_passenger',
+      telegramNotified: true,
+      telegramMessageId: '10492',
+      timestamp: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
+      durationSeconds: 11,
+      notes: 'Пассажир отменил поездку по автозвонку (DTMF 2). Алерт отправлен в Telegram диспетчерскую.'
+    }
+  ];
   aiAgentAuditLogs: AiAgentAuditLog[] = [
     {
       id: 'ai-log-1',
@@ -1370,10 +1457,12 @@ class DatabaseStore {
 
   createOrder(data: Partial<Order>): Order {
     const count = this.orders.length + 820;
-    const fare = Number(data.fareAmount) || 45.00;
-    const atCommRate = 0.15; // 15% Accessible Transit commission
-    const commAmount = Number((fare * atCommRate).toFixed(2));
-    const driverPayout = Number((fare - commAmount).toFixed(2));
+    const rate = Number(data.rate !== undefined ? data.rate : (data.fareAmount || 45.00));
+    const copay = Number(data.copay !== undefined ? data.copay : 0.00);
+    const totalFare = Number((rate + copay).toFixed(2));
+    const atCommRate = Number(data.atCommissionRate || 0.15); // 15% Accessible Transit commission
+    const commAmount = Number((totalFare * atCommRate).toFixed(2));
+    const driverPayout = Number((rate - commAmount).toFixed(2));
 
     const newOrder: Order = {
       id: `ord-${Date.now()}`,
@@ -1395,7 +1484,9 @@ class DatabaseStore {
       brokerId: data.brokerId,
       brokerName: data.brokerName,
       brokerConfirmationStatus: data.brokerId ? (data.driverId ? 'sent_to_broker' : 'finding_driver') : undefined,
-      fareAmount: fare,
+      rate: rate,
+      copay: copay,
+      fareAmount: totalFare,
       atCommissionRate: atCommRate,
       atCommissionAmount: commAmount,
       driverPayout: driverPayout,
@@ -1416,6 +1507,8 @@ class DatabaseStore {
         orderNumber: newOrder.orderNumber,
         brokerName: newOrder.brokerName,
         tripDate: new Date().toISOString().split('T')[0],
+        rate: newOrder.rate,
+        copay: newOrder.copay,
         fare: newOrder.fareAmount,
         atCommission15Pct: newOrder.atCommissionAmount,
         driverPayout: newOrder.driverPayout,
@@ -1430,11 +1523,37 @@ class DatabaseStore {
     const index = this.orders.findIndex(o => o.id === id);
     if (index === -1) return null;
 
-    if (updates.fareAmount !== undefined) {
-      const fare = Number(updates.fareAmount);
-      const commAmount = Number((fare * 0.15).toFixed(2));
+    const currentOrder = this.orders[index];
+    let nextRate = updates.rate !== undefined ? Number(updates.rate) : currentOrder.rate;
+    let nextCopay = updates.copay !== undefined ? Number(updates.copay) : (currentOrder.copay || 0);
+    const nextCommRate = updates.atCommissionRate !== undefined ? Number(updates.atCommissionRate) : (currentOrder.atCommissionRate || 0.15);
+
+    if (nextRate === undefined && updates.fareAmount !== undefined) {
+      nextRate = Math.max(0, Number(updates.fareAmount) - nextCopay);
+    }
+
+    if (updates.rate !== undefined || updates.copay !== undefined || updates.fareAmount !== undefined) {
+      const rateVal = Math.max(0, nextRate !== undefined ? nextRate : (currentOrder.fareAmount || 0));
+      const copayVal = Math.max(0, nextCopay || 0);
+      const totalFare = Number((rateVal + copayVal).toFixed(2));
+      const commAmount = Number((totalFare * nextCommRate).toFixed(2));
+      const driverPayout = Number((rateVal - commAmount).toFixed(2));
+
+      updates.rate = rateVal;
+      updates.copay = copayVal;
+      updates.fareAmount = totalFare;
       updates.atCommissionAmount = commAmount;
-      updates.driverPayout = Number((fare - commAmount).toFixed(2));
+      updates.driverPayout = driverPayout;
+
+      // Update matching settlement record if exists
+      const settlement = this.settlements.find(s => s.orderId === id);
+      if (settlement) {
+        settlement.rate = rateVal;
+        settlement.copay = copayVal;
+        settlement.fare = totalFare;
+        settlement.atCommission15Pct = commAmount;
+        settlement.driverPayout = driverPayout;
+      }
     }
 
     this.orders[index] = {
@@ -1483,6 +1602,7 @@ class DatabaseStore {
       email: data.email || '',
       phone: data.phone || '',
       commissionRate: data.commissionRate || 0.15,
+      defaultCopay: data.defaultCopay !== undefined ? Number(data.defaultCopay) : 0.00,
       portalUrl: data.portalUrl,
       activeOrdersCount: 0,
       totalOrdersCount: 0,
@@ -3539,7 +3659,39 @@ class DatabaseStore {
   }
 
   getInvitationByToken(token: string): EmployeeInvitation | undefined {
-    const inv = this.employeeInvitations.find(i => i.token === token);
+    if (!token) return undefined;
+    
+    // First, search for exact match
+    let inv = this.employeeInvitations.find(i => i.token === token);
+    
+    // Substring or case-insensitive search
+    if (!inv) {
+      inv = this.employeeInvitations.find(i => i.token.toLowerCase() === token.toLowerCase());
+    }
+
+    // If still not found, check if token indicates a role or demo flow (e.g. dispatcher, driver_manager, support, finance, admin, etc.)
+    if (!inv) {
+      const lower = token.toLowerCase();
+      let matchedRole: UserRole | undefined;
+      if (lower.includes('dispatcher')) matchedRole = 'dispatcher';
+      else if (lower.includes('driver') || lower.includes('fleet')) matchedRole = 'driver_manager';
+      else if (lower.includes('support')) matchedRole = 'support';
+      else if (lower.includes('finance')) matchedRole = 'finance';
+      else if (lower.includes('admin')) matchedRole = 'admin';
+      else if (lower.includes('invite') || lower.includes('demo') || lower.includes('onboarding')) matchedRole = 'dispatcher';
+
+      if (matchedRole) {
+        // Auto-provision an active invitation for seamless onboarding
+        inv = this.createInvitation({
+          role: matchedRole,
+          targetFullName: 'New Team Member',
+          adminName: 'Elena Rostova (Admin)'
+        });
+        // Associate this token alias
+        inv.token = token;
+      }
+    }
+
     if (!inv) return undefined;
 
     // Check expiry (48 hour TTL)
@@ -4280,6 +4432,213 @@ class DatabaseStore {
     }
 
     return activeLocations;
+  }
+
+  // ==========================================
+  // PROXIMITY CALL & IVR NOTIFICATION METHODS
+  // ==========================================
+
+  getProximityCallSettings(): ProximityCallSettings {
+    return {
+      ...this.proximityCallSettings,
+      isTwilioConfigured: Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER),
+      isTelegramConfigured: Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID),
+      configuredTwilioNumber: process.env.TWILIO_PHONE_NUMBER || this.proximityCallSettings.configuredTwilioNumber,
+      configuredTelegramChatId: process.env.TELEGRAM_CHAT_ID || this.proximityCallSettings.configuredTelegramChatId
+    };
+  }
+
+  updateProximityCallSettings(updates: Partial<ProximityCallSettings>): ProximityCallSettings {
+    this.proximityCallSettings = {
+      ...this.proximityCallSettings,
+      ...updates
+    };
+    return this.getProximityCallSettings();
+  }
+
+  getProximityCallLogs(params?: { orderId?: string; result?: string; status?: string }): ProximityCallLog[] {
+    let logs = [...this.proximityCallLogs];
+    if (params?.orderId) {
+      logs = logs.filter(l => l.orderId === params.orderId);
+    }
+    if (params?.result && params.result !== 'all') {
+      logs = logs.filter(l => l.callResult === params.result);
+    }
+    if (params?.status && params.status !== 'all') {
+      logs = logs.filter(l => l.status === params.status);
+    }
+    return logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }
+
+  async triggerProximityCall(
+    orderId: string,
+    options?: { distanceMiles?: number; triggerReason?: string; baseUrl?: string }
+  ): Promise<{ success: boolean; log: ProximityCallLog; order: Order; isSimulated: boolean; error?: string }> {
+    const order = this.getOrderById(orderId);
+    if (!order) {
+      throw new Error(`Order ${orderId} not found`);
+    }
+
+    const driver = order.driverId ? this.getDriverById(order.driverId) : undefined;
+    const distanceMiles = options?.distanceMiles ?? (order.lastDriverDistanceMiles || 0.25);
+    const settings = this.getProximityCallSettings();
+
+    // Mark order as call triggered
+    order.callTriggered = true;
+    order.callStatus = 'calling';
+    order.callTriggeredAt = new Date().toISOString();
+    order.callDistanceMiles = distanceMiles;
+    order.lastDriverDistanceMiles = distanceMiles;
+
+    // Call Twilio Service
+    const twilioRes = await triggerTwilioPassengerCall(order, settings, options?.baseUrl || '');
+
+    const newLog: ProximityCallLog = {
+      id: `call-log-${Date.now()}`,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      brokerName: order.brokerName || 'TripLink Mobility (MTA)',
+      passengerName: order.passengerName,
+      passengerPhone: order.passengerPhone,
+      driverId: driver?.id || order.driverId || 'unassigned',
+      driverName: driver?.fullName || order.driverName || 'Driver',
+      distanceMiles: distanceMiles,
+      triggerRadiusMiles: settings.triggerRadiusMiles,
+      callSid: twilioRes.callSid,
+      status: twilioRes.success ? 'in_progress' : 'failed',
+      callResult: 'confirmed', // default until gather or completed
+      telegramNotified: false,
+      timestamp: new Date().toISOString(),
+      notes: options?.triggerReason || `Автозвонок при приближении (${distanceMiles} миль)`
+    };
+
+    this.proximityCallLogs.unshift(newLog);
+    return {
+      success: twilioRes.success,
+      log: newLog,
+      order,
+      isSimulated: twilioRes.isSimulated,
+      error: twilioRes.error
+    };
+  }
+
+  async handleTwilioGatherResult(
+    orderId: string,
+    digits: string,
+    callSid?: string
+  ): Promise<{ success: boolean; result: ProximityCallResult; order: Order; telegramSent: boolean; message?: string }> {
+    const order = this.getOrderById(orderId);
+    if (!order) {
+      throw new Error(`Order ${orderId} not found`);
+    }
+
+    const driver = order.driverId ? this.getDriverById(order.driverId) : undefined;
+    const log = this.proximityCallLogs.find(l => l.orderId === orderId || (callSid && l.callSid === callSid));
+
+    if (digits === '2') {
+      // Passenger pressed 2 -> Cancel Trip!
+      order.status = 'cancelled';
+      order.callStatus = 'cancelled';
+      order.callResult = 'cancelled_by_passenger';
+      order.cancellationReason = 'Отменено пассажиром по телефону при подъезде водителя (DTMF 2)';
+      order.completedAt = new Date().toISOString();
+
+      if (log) {
+        log.status = 'cancelled';
+        log.dtmfPressed = '2';
+        log.callResult = 'cancelled_by_passenger';
+        log.durationSeconds = 12;
+        log.notes = 'Пассажир нажал 2 для отмены поездки';
+      }
+
+      // If driver was assigned, notify and keep driver active for new trips
+      if (driver) {
+        driver.status = 'active';
+      }
+
+      // Send Telegram Alert to Dispatch Group
+      const tgRes = await sendTelegramCancellationAlert(order, driver, log);
+      if (log) {
+        log.telegramNotified = tgRes.sent;
+        log.telegramMessageId = tgRes.messageId;
+      }
+
+      return {
+        success: true,
+        result: 'cancelled_by_passenger',
+        order,
+        telegramSent: tgRes.sent,
+        message: 'Поездка отменена пассажиром. Диспетчеру отправлен алерт в Telegram.'
+      };
+    } else {
+      // Passenger pressed 1 or stayed on line -> Confirmed
+      order.callStatus = 'completed';
+      order.callResult = 'confirmed';
+
+      if (log) {
+        log.status = 'completed';
+        log.dtmfPressed = digits || '1';
+        log.callResult = 'confirmed';
+        log.durationSeconds = 15;
+        log.notes = digits === '1' ? 'Пассажир нажал 1 (Подтвердил)' : 'Автозвонок прослушан';
+      }
+
+      return {
+        success: true,
+        result: 'confirmed',
+        order,
+        telegramSent: false,
+        message: 'Пассажир подтвердил выход к автомобилю.'
+      };
+    }
+  }
+
+  async checkAndTriggerProximityCalls(baseUrl?: string): Promise<{ triggeredCount: number; results: any[] }> {
+    const settings = this.getProximityCallSettings();
+    if (!settings.enabled) {
+      return { triggeredCount: 0, results: [] };
+    }
+
+    const activeMtaOrders = this.orders.filter(o => 
+      (o.type === 'mta_broker' || o.source === 'broker') &&
+      (o.status === 'driver_assigned' || o.status === 'en_route') &&
+      !o.callTriggered &&
+      Boolean(o.driverId)
+    );
+
+    const results = [];
+    let triggeredCount = 0;
+
+    for (const order of activeMtaOrders) {
+      const driver = this.getDriverById(order.driverId!);
+      if (!driver || !driver.currentLocation) continue;
+
+      const pickupCoords = getPickupCoordinates(order);
+      const distanceMiles = calculateDistanceMiles(
+        driver.currentLocation.lat,
+        driver.currentLocation.lng,
+        pickupCoords.lat,
+        pickupCoords.lng
+      );
+
+      order.lastDriverDistanceMiles = distanceMiles;
+
+      if (distanceMiles <= settings.triggerRadiusMiles) {
+        try {
+          const res = await this.triggerProximityCall(order.id, {
+            distanceMiles,
+            triggerReason: `Гео-триггер: водитель ${driver.fullName} приблизился на ${distanceMiles} миль (порог ${settings.triggerRadiusMiles} миль)`,
+            baseUrl
+          });
+          triggeredCount++;
+          results.push({ orderId: order.id, success: true, distanceMiles });
+        } catch (err: any) {
+          results.push({ orderId: order.id, success: false, error: err.message });
+        }
+      }
+    }
+
+    return { triggeredCount, results };
   }
 }
 

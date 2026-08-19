@@ -14,6 +14,7 @@ import {
   FileText, Calendar, Sparkles, AlertCircle, Users, Check,
   ChevronRight, ExternalLink, ShieldAlert, ArrowUpDown, ChevronDown
 } from 'lucide-react';
+import { ComplianceCharts } from './ComplianceCharts';
 
 interface ComplianceViewProps {
   currentRole: UserRole;
@@ -317,6 +318,13 @@ export const ComplianceView: React.FC<ComplianceViewProps> = ({
           <div className="text-[11px] text-slate-400 mt-1">TLC regulatory standard</div>
         </div>
       </div>
+
+      {/* Interactive Compliance Charts */}
+      <ComplianceCharts 
+        matrixData={matrixData}
+        queueDocs={queueDocs}
+        expiringDocs={expiringDocs}
+      />
 
       {/* Navigation Sub-Tabs */}
       <div className="flex border-b border-slate-800 space-x-1 overflow-x-auto no-scrollbar">

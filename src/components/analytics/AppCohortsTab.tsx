@@ -7,8 +7,19 @@ import {
   HelpCircle, 
   TrendingUp, 
   Smartphone,
-  ShieldCheck
+  ShieldCheck,
+  BarChart3
 } from 'lucide-react';
+import { 
+  ResponsiveContainer, 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  Tooltip, 
+  CartesianGrid, 
+  Legend 
+} from 'recharts';
 import { AppCohortRow, AppTarget, AppAudience } from '../../types';
 
 interface AppCohortsTabProps {
@@ -116,6 +127,45 @@ export const AppCohortsTab: React.FC<AppCohortsTabProps> = ({
         <div className="p-3.5 bg-slate-900/80 border border-slate-800 rounded-xl text-center">
           <span className="block text-[10px] text-slate-500 uppercase font-semibold">Day 30 Ret</span>
           <span className="text-lg font-bold text-slate-200">{avgD30}%</span>
+        </div>
+      </div>
+
+      {/* Cohort Retention Decay Bar Chart */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-sm space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <BarChart3 className="w-4 h-4 text-emerald-400" />
+            <h4 className="text-sm font-semibold text-white">Cohort Retention Rates Decay Visualizer</h4>
+          </div>
+          <span className="text-xs text-slate-400">Day 1 → Day 7 → Day 14 → Day 30</span>
+        </div>
+
+        <div className="h-56 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart 
+              data={filteredCohorts.map((c, i) => ({
+                cohort: c.cohortWeek || `Wk ${i+1}`,
+                'Day 1 (%)': c.day1Pct ?? (c as any).day1 ?? 0,
+                'Day 7 (%)': c.day7Pct ?? (c as any).day7 ?? 0,
+                'Day 14 (%)': c.day14Pct ?? (c as any).day14 ?? 0,
+                'Day 30 (%)': c.day30Pct ?? (c as any).day30 ?? 0,
+              }))} 
+              margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.4} />
+              <XAxis dataKey="cohort" stroke="#94a3b8" fontSize={11} tickLine={false} />
+              <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} tickFormatter={(v) => `${v}%`} />
+              <Tooltip 
+                formatter={(val) => [`${val}%`, 'Retention']}
+                contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px', fontSize: '12px', color: '#fff' }} 
+              />
+              <Legend verticalAlign="top" height={32} formatter={(val) => <span className="text-xs text-slate-300">{val}</span>} />
+              <Bar dataKey="Day 1 (%)" fill="#10b981" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="Day 7 (%)" fill="#0284c7" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="Day 14 (%)" fill="#6366f1" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="Day 30 (%)" fill="#8b5cf6" radius={[3, 3, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       </div>
 

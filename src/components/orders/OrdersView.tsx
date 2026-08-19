@@ -1,10 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Order, Driver, Broker, OrderStatus, OrderType, OrderSource, BrokerConfirmationStatus, VehicleType, QueensNeighborhood, UserRole } from '../../types';
 import { 
   Navigation as NavIcon, Search, Filter, Plus, Clock, Car, CheckCircle2, 
   XCircle, AlertCircle, Building2, User, Phone, MapPin, DollarSign, 
-  Sparkles, ArrowRight, ShieldCheck, ChevronRight, UserCheck, Bot
+  Sparkles, ArrowRight, ShieldCheck, ChevronRight, UserCheck, Bot,
+  Download, FileSpreadsheet, Check, PhoneCall, PhoneOff, PhoneForwarded, Radio, Send,
+  Lock, Edit3, Save, Calculator
 } from 'lucide-react';
+import { downloadTlcCsv, TLC_BASE_NUMBER } from '../../lib/tlcExport';
+import { calculateMtaPaymentBreakdown, canViewMtaCommissionAndPayout, canEditMtaFinancials, downloadMtaFinancialCsv } from '../../lib/mtaPayment';
+import { ProximityCallModal } from './ProximityCallModal';
+import { OrdersCharts } from './OrdersCharts';
 
 interface OrdersViewProps {
   orders: Order[];
@@ -15,6 +21,7 @@ interface OrdersViewProps {
   onUpdateStatus: (orderId: string, status: OrderStatus, brokerStatus?: BrokerConfirmationStatus) => Promise<void>;
   onAssignDriver: (orderId: string, driverId: string) => Promise<void>;
   onDeleteOrder: (orderId: string) => Promise<void>;
+  onUpdateOrder?: (orderId: string, updates: Partial<Order>) => Promise<Order | null>;
 }
 
 const statusConfig: Record<OrderStatus, { label: string; bg: string; text: string; border: string }> = {
@@ -51,20 +58,58 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   onCreateOrder,
   onUpdateStatus,
   onAssignDriver,
-  onDeleteOrder
+  onDeleteOrder,
+  onUpdateOrder
 }) => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [neighborhoodFilter, setNeighborhoodFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [exportNotice, setExportNotice] = useState<string | null>(null);
 
   // Selected Order Drawer & Modals
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [isProximityModalOpen, setIsProximityModalOpen] = useState(false);
+  const [proximityTargetOrderId, setProximityTargetOrderId] = useState<string | null>(null);
+
+  // Financial Edit State in Drawer
+  const [editRate, setEditRate] = useState<number>(0);
+  const [editCopay, setEditCopay] = useState<number>(0);
+  const [isEditingFinancials, setIsEditingFinancials] = useState<boolean>(false);
+  const [isSavingFinancials, setIsSavingFinancials] = useState<boolean>(false);
+
+  // Sync selectedOrder to edit fields
+  useEffect(() => {
+    if (selectedOrder) {
+      const initialRate = selectedOrder.rate ?? (selectedOrder.fareAmount - (selectedOrder.copay || 0));
+      const initialCopay = selectedOrder.copay ?? 0;
+      setEditRate(initialRate > 0 ? initialRate : selectedOrder.fareAmount);
+      setEditCopay(initialCopay);
+      setIsEditingFinancials(false);
+    }
+  }, [selectedOrder]);
+
+  // Export Official TLC FHV Trip Record CSV
+  const handleExportTlcCsv = () => {
+    const targetOrders = filteredOrders.length > 0 ? filteredOrders : orders;
+    const { filename, count } = downloadTlcCsv(targetOrders, drivers);
+    setExportNotice(`Exported ${count} TLC trip records to ${filename}`);
+    setTimeout(() => setExportNotice(null), 4000);
+  };
+
+  // Export MTA 5-Column Financials Breakdown CSV
+  const handleExportMtaFinancialCsv = () => {
+    const targetOrders = filteredOrders.length > 0 ? filteredOrders : orders;
+    const { filename, count } = downloadMtaFinancialCsv(targetOrders);
+    setExportNotice(`Exported ${count} MTA financial records to ${filename}`);
+    setTimeout(() => setExportNotice(null), 4000);
+  };
 
   // New Order Form State
+  const initialBroker = brokers[0];
   const [newOrder, setNewOrder] = useState<Partial<Order>>({
     passengerName: '',
     passengerPhone: '',
@@ -72,16 +117,24 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     pickupNeighborhood: 'Jackson Heights',
     dropoffAddress: '',
     dropoffNeighborhood: 'Jamaica',
-    fareAmount: 48.00,
+    rate: 45.00,
+    copay: initialBroker?.defaultCopay ?? 5.00,
+    fareAmount: 50.00,
     vehicleType: 'WAV',
     requiresWav: true,
     type: 'mta_broker',
     source: 'broker',
-    brokerId: brokers[0]?.id || 'brk-01',
-    brokerName: brokers[0]?.name || 'TripLink Mobility (MTA Paratransit)',
+    brokerId: initialBroker?.id || 'brk-01',
+    brokerName: initialBroker?.name || 'TripLink Mobility (MTA Paratransit)',
     driverId: '',
     specialAssistanceNotes: 'Wheelchair passenger, door-to-door boarding assist required.'
   });
+
+  // Calculate live breakdown for new order form
+  const newOrderBreakdown = calculateMtaPaymentBreakdown(
+    Number(newOrder.rate) || 0,
+    Number(newOrder.copay) || 0
+  );
 
   // Filtered orders
   const filteredOrders = orders.filter((o) => {
@@ -130,11 +183,22 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       }
     }
 
+    const calculated = calculateMtaPaymentBreakdown(
+      Number(newOrder.rate) || 0,
+      Number(newOrder.copay) || 0
+    );
+
     await onCreateOrder({
       ...newOrder,
       brokerName,
       driverName,
       driverPhone,
+      rate: calculated.rate,
+      copay: calculated.copay,
+      fareAmount: calculated.totalFare,
+      atCommissionRate: 0.15,
+      atCommissionAmount: calculated.atCommission15Pct,
+      driverPayout: calculated.driverPayout,
       requiresWav: newOrder.vehicleType === 'WAV' || Boolean(newOrder.requiresWav)
     });
 
@@ -146,7 +210,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       pickupNeighborhood: 'Jackson Heights',
       dropoffAddress: '',
       dropoffNeighborhood: 'Jamaica',
-      fareAmount: 48.00,
+      rate: 45.00,
+      copay: initialBroker?.defaultCopay ?? 5.00,
+      fareAmount: 50.00,
       vehicleType: 'WAV',
       requiresWav: true,
       type: 'mta_broker',
@@ -156,6 +222,35 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       driverId: '',
       specialAssistanceNotes: ''
     });
+  };
+
+  const handleSaveOrderFinancials = async () => {
+    if (!selectedOrder) return;
+    setIsSavingFinancials(true);
+    try {
+      const updatedFinancials = calculateMtaPaymentBreakdown(editRate, editCopay);
+      const updates: Partial<Order> = {
+        rate: updatedFinancials.rate,
+        copay: updatedFinancials.copay,
+        fareAmount: updatedFinancials.totalFare,
+        atCommissionAmount: updatedFinancials.atCommission15Pct,
+        driverPayout: updatedFinancials.driverPayout
+      };
+
+      if (onUpdateOrder) {
+        const res = await onUpdateOrder(selectedOrder.id, updates);
+        if (res) {
+          setSelectedOrder(res);
+        } else {
+          setSelectedOrder({ ...selectedOrder, ...updates });
+        }
+      } else {
+        setSelectedOrder({ ...selectedOrder, ...updates });
+      }
+      setIsEditingFinancials(false);
+    } finally {
+      setIsSavingFinancials(false);
+    }
   };
 
   const handleQuickStatusChange = async (order: Order, nextStatus: OrderStatus) => {
@@ -269,6 +364,45 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
             <option value="app">Mobile App</option>
           </select>
 
+          {/* MTA Proximity Auto-Call (Twilio & Telegram) Button */}
+          <button
+            id="btn-mta-auto-call"
+            type="button"
+            onClick={() => {
+              setProximityTargetOrderId(null);
+              setIsProximityModalOpen(true);
+            }}
+            className="px-3.5 py-1.5 bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-300 hover:text-amber-200 text-xs font-semibold rounded-lg flex items-center gap-1.5 border border-amber-500/40 shadow-sm transition-all"
+            title="Автозвонок пассажиру через Twilio при приближении водителя & Алерт в Telegram"
+          >
+            <PhoneCall className="w-3.5 h-3.5 text-amber-400" />
+            <span>Автодозвон MTA (0.3 mi)</span>
+          </button>
+
+          {/* Export MTA 5-Column Financials CSV */}
+          <button
+            id="btn-export-mta-financial-csv"
+            type="button"
+            onClick={handleExportMtaFinancialCsv}
+            className="px-3.5 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 hover:text-emerald-200 text-xs font-semibold rounded-lg flex items-center gap-1.5 border border-emerald-500/30 shadow-sm transition-all"
+            title="Download MTA Financials Breakdown CSV (Rate | Copay | Total Fare | AT Comm | Driver Payout)"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+            <span>MTA Financials CSV</span>
+          </button>
+
+          {/* Export Official TLC FHV CSV Button */}
+          <button
+            id="btn-export-tlc-csv"
+            type="button"
+            onClick={handleExportTlcCsv}
+            className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 border border-slate-700 hover:border-slate-600 shadow-sm transition-all"
+            title="Download Official NYC TLC FHV Trip Record CSV (Base B03669)"
+          >
+            <Download className="w-3.5 h-3.5 text-sky-400" />
+            <span>Export TLC CSV</span>
+          </button>
+
           {/* Create MTA / Direct Order Button */}
           <button
             onClick={() => setIsCreateModalOpen(true)}
@@ -279,6 +413,20 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Export Confirmation Toast / Banner */}
+      {exportNotice && (
+        <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 px-4 py-2.5 rounded-xl text-xs flex items-center justify-between transition-all">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span className="font-medium">{exportNotice}</span>
+          </div>
+          <span className="text-[11px] text-emerald-400/80 font-mono">TLC Base B03669 Compliant</span>
+        </div>
+      )}
+
+      {/* Interactive Orders & Dispatch Charts */}
+      <OrdersCharts orders={filteredOrders} />
 
       {/* ORDERS UNIFIED TABLE */}
       <div className="bg-slate-900/80 rounded-xl border border-slate-800 overflow-hidden shadow-xl">
@@ -389,18 +537,40 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                         )}
                       </td>
 
-                      {/* Status & Broker workflow */}
+                      {/* Status & Broker workflow & Proximity Call Badges */}
                       <td className="px-4 py-3.5">
-                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium border ${status.bg} ${status.text} ${status.border}`}>
-                          {status.label}
-                        </span>
-                        {order.type === 'mta_broker' && order.brokerConfirmationStatus && (
-                          <div className="mt-1">
-                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${brokerStatusConfig[order.brokerConfirmationStatus].bg}`}>
-                              {brokerStatusConfig[order.brokerConfirmationStatus].label}
-                            </span>
-                          </div>
-                        )}
+                        <div className="flex flex-col gap-1">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium border w-fit ${status.bg} ${status.text} ${status.border}`}>
+                            {status.label}
+                          </span>
+                          
+                          {order.type === 'mta_broker' && order.brokerConfirmationStatus && (
+                            <div>
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${brokerStatusConfig[order.brokerConfirmationStatus].bg}`}>
+                                {brokerStatusConfig[order.brokerConfirmationStatus].label}
+                              </span>
+                            </div>
+                          )}
+
+                          {/* Proximity Call Status Badge */}
+                          {order.callTriggered && (
+                            <div className="flex items-center gap-1">
+                              {order.callResult === 'cancelled_by_passenger' ? (
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center gap-1">
+                                  <PhoneOff className="w-2.5 h-2.5" /> Отмена по звонку (DTMF 2)
+                                </span>
+                              ) : order.callResult === 'confirmed' ? (
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                                  <PhoneCall className="w-2.5 h-2.5 text-emerald-400" /> Выход подтверждён
+                                </span>
+                              ) : (
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">
+                                  <PhoneCall className="w-2.5 h-2.5" /> Звонок (0.3 mi)
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </td>
 
                       {/* Fare & 15% Commission */}
@@ -452,6 +622,22 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                               Complete
                             </button>
                           )}
+                          {/* MTA Proximity IVR Quick Action */}
+                          {(order.type === 'mta_broker' || order.source === 'broker') && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setProximityTargetOrderId(order.id);
+                                setIsProximityModalOpen(true);
+                              }}
+                              className="p-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded text-[11px] font-medium flex items-center gap-1"
+                              title="Автозвонок Twilio & DTMF / Telegram"
+                            >
+                              <PhoneCall className="w-3 h-3" />
+                            </button>
+                          )}
+
                           <button
                             onClick={() => setSelectedOrder(order)}
                             className="p-1.5 text-slate-400 hover:text-white rounded"
@@ -631,24 +817,260 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                 )}
               </div>
 
-              {/* Financial Breakdown (15% AT Commission) */}
-              <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700/60 text-xs">
-                <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Financial Settlement Breakdown</h4>
-                <div className="grid grid-cols-3 gap-3 text-center">
-                  <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-700/60">
-                    <div className="text-slate-400 text-[11px]">Gross Fare</div>
-                    <div className="text-white font-bold text-base mt-1">${selectedOrder.fareAmount.toFixed(2)}</div>
+              {/* 5-Column Payment Breakdown (Rate | Copay | Total Fare | AT Commission 15% | Driver Payout) */}
+              {(() => {
+                const currentCalculated = isEditingFinancials 
+                  ? calculateMtaPaymentBreakdown(editRate, editCopay)
+                  : calculateMtaPaymentBreakdown(
+                      selectedOrder.rate ?? (selectedOrder.fareAmount - (selectedOrder.copay || 0)),
+                      selectedOrder.copay ?? 0
+                    );
+                const showCommission = canViewMtaCommissionAndPayout(currentRole);
+                const canEdit = canEditMtaFinancials(currentRole);
+
+                return (
+                  <div className="bg-slate-800/60 p-4 rounded-xl border border-slate-700/80 text-xs space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <div className="flex items-center space-x-2">
+                          <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                            <Calculator className="w-4 h-4 text-emerald-400" />
+                            Payment Breakdown (MTA Broker Financials)
+                          </h4>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            15% Fixed Comm
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Standard 5-column brokerage formula settlement
+                        </p>
+                      </div>
+
+                      {canEdit && (
+                        <div className="flex items-center gap-2 self-start sm:self-auto">
+                          {isEditingFinancials ? (
+                            <>
+                              <button
+                                onClick={() => {
+                                  const r = selectedOrder.rate ?? (selectedOrder.fareAmount - (selectedOrder.copay || 0));
+                                  setEditRate(r > 0 ? r : selectedOrder.fareAmount);
+                                  setEditCopay(selectedOrder.copay ?? 0);
+                                  setIsEditingFinancials(false);
+                                }}
+                                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] rounded font-medium border border-slate-700 transition"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={handleSaveOrderFinancials}
+                                disabled={isSavingFinancials}
+                                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] rounded font-semibold flex items-center gap-1 shadow-sm transition disabled:opacity-50"
+                              >
+                                <Save className="w-3.5 h-3.5" />
+                                <span>{isSavingFinancials ? 'Saving...' : 'Save Changes'}</span>
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => setIsEditingFinancials(true)}
+                              className="px-2.5 py-1 bg-sky-600/20 hover:bg-sky-600/40 text-sky-300 border border-sky-500/40 rounded text-[11px] font-semibold flex items-center gap-1 transition"
+                            >
+                              <Edit3 className="w-3 h-3" />
+                              <span>Edit Rate / Copay</span>
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Interactive 5-Column Grid Table */}
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1">
+                      {/* Column 1: Rate */}
+                      <div className="bg-slate-900/80 p-3 rounded-lg border border-slate-700/70 flex flex-col justify-between">
+                        <div className="flex items-center justify-between text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
+                          <span>1. Rate</span>
+                          <span className="text-[9px] text-slate-500">Broker</span>
+                        </div>
+                        {isEditingFinancials ? (
+                          <div className="mt-2">
+                            <input
+                              type="number"
+                              step="0.50"
+                              min="0"
+                              value={editRate}
+                              onChange={(e) => setEditRate(Math.max(0, Number(e.target.value)))}
+                              className="w-full p-1 bg-slate-800 text-white text-sm font-bold rounded border border-sky-500 focus:outline-none"
+                            />
+                            <div className="text-[10px] text-slate-400 mt-1">Base from broker</div>
+                          </div>
+                        ) : (
+                          <div className="mt-2">
+                            <div className="text-base font-bold text-white">${currentCalculated.rate.toFixed(2)}</div>
+                            <div className="text-[10px] text-slate-400 mt-0.5">Paid by broker</div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Column 2: Copay */}
+                      <div className="bg-slate-900/80 p-3 rounded-lg border border-slate-700/70 flex flex-col justify-between">
+                        <div className="flex items-center justify-between text-[10px] text-amber-400 uppercase tracking-wider font-semibold">
+                          <span>2. Copay</span>
+                          <span className="text-[9px] text-amber-500/80">Cash</span>
+                        </div>
+                        {isEditingFinancials ? (
+                          <div className="mt-2">
+                            <input
+                              type="number"
+                              step="0.50"
+                              min="0"
+                              value={editCopay}
+                              onChange={(e) => setEditCopay(Math.max(0, Number(e.target.value)))}
+                              className="w-full p-1 bg-slate-800 text-amber-300 text-sm font-bold rounded border border-amber-500 focus:outline-none"
+                            />
+                            <div className="text-[10px] text-amber-400/80 mt-1">Cash to driver</div>
+                          </div>
+                        ) : (
+                          <div className="mt-2">
+                            <div className="text-base font-bold text-amber-300">${currentCalculated.copay.toFixed(2)}</div>
+                            <div className="text-[10px] text-amber-400/80 mt-0.5">Cash in hand</div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Column 3: Total Fare */}
+                      <div className="bg-sky-950/30 p-3 rounded-lg border border-sky-700/40 flex flex-col justify-between">
+                        <div className="flex items-center justify-between text-[10px] text-sky-400 uppercase tracking-wider font-semibold">
+                          <span>3. Total Fare</span>
+                          <span className="text-[9px] text-sky-400">Sum</span>
+                        </div>
+                        <div className="mt-2">
+                          <div className="text-base font-bold text-sky-300">${currentCalculated.totalFare.toFixed(2)}</div>
+                          <div className="text-[10px] text-sky-400/80 mt-0.5">Rate + Copay</div>
+                        </div>
+                      </div>
+
+                      {/* Column 4: AT Commission (15%) */}
+                      <div className="bg-emerald-950/30 p-3 rounded-lg border border-emerald-700/40 flex flex-col justify-between">
+                        <div className="flex items-center justify-between text-[10px] text-emerald-400 uppercase tracking-wider font-semibold">
+                          <span>4. AT Comm (15%)</span>
+                          <span className="text-[9px] text-emerald-400">Margin</span>
+                        </div>
+                        <div className="mt-2">
+                          {showCommission ? (
+                            <>
+                              <div className="text-base font-bold text-emerald-300">+${currentCalculated.atCommission15Pct.toFixed(2)}</div>
+                              <div className="text-[10px] text-emerald-400/80 mt-0.5">Total Fare × 15%</div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="text-sm font-bold text-slate-500 flex items-center gap-1 mt-1">
+                                <Lock className="w-3 h-3 text-slate-500" />
+                                <span>Restricted</span>
+                              </div>
+                              <div className="text-[9px] text-slate-500 mt-0.5">Admin/Finance</div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Column 5: Driver Payout */}
+                      <div className="bg-indigo-950/30 p-3 rounded-lg border border-indigo-700/40 flex flex-col justify-between">
+                        <div className="flex items-center justify-between text-[10px] text-indigo-300 uppercase tracking-wider font-semibold">
+                          <span>5. Driver Payout</span>
+                          <span className="text-[9px] text-indigo-400">Net</span>
+                        </div>
+                        <div className="mt-2">
+                          {showCommission ? (
+                            <>
+                              <div className="text-base font-bold text-indigo-200">${currentCalculated.driverPayout.toFixed(2)}</div>
+                              <div className="text-[10px] text-indigo-300/80 mt-0.5">Rate − AT Comm</div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="text-sm font-bold text-slate-500 flex items-center gap-1 mt-1">
+                                <Lock className="w-3 h-3 text-slate-500" />
+                                <span>Restricted</span>
+                              </div>
+                              <div className="text-[9px] text-slate-500 mt-0.5">Admin/Finance</div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Formula Clarification Legend */}
+                    <div className="p-2.5 bg-slate-900/90 rounded-lg border border-slate-800 text-[11px] text-slate-400 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-slate-300">Rules & Formulas:</span>
+                        <span className="font-mono text-[10px] bg-slate-800 px-2 py-0.5 rounded text-sky-300">
+                          Total Fare = Rate + Copay
+                        </span>
+                        <span className="font-mono text-[10px] bg-slate-800 px-2 py-0.5 rounded text-emerald-300">
+                          AT Comm = Total Fare × 15%
+                        </span>
+                        <span className="font-mono text-[10px] bg-slate-800 px-2 py-0.5 rounded text-indigo-300">
+                          Driver Payout = Rate − AT Comm
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-amber-400/90 font-medium">
+                        * Copay ($ {currentCalculated.copay.toFixed(2)}) is kept in driver's pocket in cash
+                      </span>
+                    </div>
                   </div>
-                  <div className="bg-emerald-950/40 p-3 rounded-lg border border-emerald-700/40">
-                    <div className="text-emerald-400 text-[11px] font-semibold">AT 15% Commission</div>
-                    <div className="text-emerald-300 font-bold text-base mt-1">${selectedOrder.atCommissionAmount.toFixed(2)}</div>
+                );
+              })()}
+
+              {/* MTA Proximity Calling (Twilio IVR & Telegram Alerts) Card */}
+              {(selectedOrder.type === 'mta_broker' || selectedOrder.source === 'broker') && (
+                <div className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 p-4 rounded-xl border border-amber-500/30 text-xs space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 font-semibold text-white">
+                      <PhoneCall className="w-4 h-4 text-amber-400" />
+                      <span>MTA Автодозвон (Twilio IVR & Telegram)</span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setProximityTargetOrderId(selectedOrder.id);
+                        setIsProximityModalOpen(true);
+                      }}
+                      className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded text-[11px] font-semibold flex items-center gap-1 transition"
+                    >
+                      <Radio className="w-3.5 h-3.5" />
+                      Управление / Тест...
+                    </button>
                   </div>
-                  <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-700/60">
-                    <div className="text-slate-400 text-[11px]">Driver Payout (85%)</div>
-                    <div className="text-slate-200 font-bold text-base mt-1">${selectedOrder.driverPayout.toFixed(2)}</div>
+
+                  <div className="grid grid-cols-2 gap-2 text-slate-300">
+                    <div className="p-2.5 bg-slate-900/60 rounded-lg border border-slate-800">
+                      <div className="text-[10px] text-slate-400">Статус автозвонка:</div>
+                      <div className="font-semibold text-white mt-0.5">
+                        {selectedOrder.callTriggered ? (
+                          selectedOrder.callResult === 'cancelled_by_passenger' ? (
+                            <span className="text-rose-400">❌ Отменён по DTMF 2</span>
+                          ) : (
+                            <span className="text-emerald-400">✓ Выполнен ({selectedOrder.callResult || 'OK'})</span>
+                          )
+                        ) : (
+                          <span className="text-amber-400">Ожидает триггера (0.3 mi)</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="p-2.5 bg-slate-900/60 rounded-lg border border-slate-800">
+                      <div className="text-[10px] text-slate-400">Оповещение в Telegram:</div>
+                      <div className="font-semibold text-white mt-0.5">
+                        {selectedOrder.callResult === 'cancelled_by_passenger' ? (
+                          <span className="text-emerald-400 flex items-center gap-1">
+                            <Send className="w-3 h-3 text-indigo-400" /> Отправлено
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">Активно при отмене</span>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               {/* Special Notes */}
               {selectedOrder.specialAssistanceNotes && (
@@ -777,7 +1199,14 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
                 {newOrder.type === 'mta_broker' && (
                   <div>
-                    <label className="text-slate-400 font-medium block mb-1">Brokerage Partner *</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-slate-400 font-medium">Brokerage Partner *</label>
+                      {newOrder.brokerId && (
+                        <span className="text-[11px] text-amber-400 font-medium">
+                          Default Copay: ${((brokers.find(b => b.id === newOrder.brokerId)?.defaultCopay) ?? 5).toFixed(2)}
+                        </span>
+                      )}
+                    </div>
                     <select
                       value={newOrder.brokerId}
                       onChange={(e) => {
@@ -785,13 +1214,16 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                         setNewOrder({
                           ...newOrder,
                           brokerId: e.target.value,
-                          brokerName: broker?.name
+                          brokerName: broker?.name,
+                          copay: broker?.defaultCopay !== undefined ? broker.defaultCopay : 5.00
                         });
                       }}
                       className="w-full p-2 bg-slate-800 text-white rounded-lg border border-slate-700 focus:outline-none focus:border-sky-500"
                     >
                       {brokers.map((b) => (
-                        <option key={b.id} value={b.id}>{b.name} (15% Comm)</option>
+                        <option key={b.id} value={b.id}>
+                          {b.name} (Default Copay: ${(b.defaultCopay ?? 5).toFixed(2)} • 15% Comm)
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -874,38 +1306,79 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                 </div>
               </div>
 
-              {/* Vehicle Type, Fare & 15% Comm Calculation */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="text-slate-400 font-medium block mb-1">Vehicle Category</label>
-                  <select
-                    value={newOrder.vehicleType}
-                    onChange={(e) => setNewOrder({ ...newOrder, vehicleType: e.target.value as VehicleType, requiresWav: e.target.value === 'WAV' })}
-                    className="w-full p-2 bg-slate-800 text-white rounded-lg border border-slate-700 focus:outline-none focus:border-sky-500"
-                  >
-                    <option value="WAV">WAV ♿ (Wheelchair Auto-Ramp)</option>
-                    <option value="Green">Green Taxi</option>
-                    <option value="Go">Go (Standard)</option>
-                    <option value="Plus">Plus</option>
-                    <option value="XL">XL</option>
-                    <option value="Black">Black</option>
-                    <option value="Black XL">Black XL</option>
-                  </select>
+              {/* Vehicle Category & 5-Column Financials Inputs */}
+              <div className="space-y-3 p-3 bg-slate-800/40 rounded-xl border border-slate-800">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-slate-400 font-medium block mb-1">Vehicle Category</label>
+                    <select
+                      value={newOrder.vehicleType}
+                      onChange={(e) => setNewOrder({ ...newOrder, vehicleType: e.target.value as VehicleType, requiresWav: e.target.value === 'WAV' })}
+                      className="w-full p-2 bg-slate-800 text-white rounded-lg border border-slate-700 focus:outline-none focus:border-sky-500"
+                    >
+                      <option value="WAV">WAV ♿ (Wheelchair Auto-Ramp)</option>
+                      <option value="Green">Green Taxi</option>
+                      <option value="Go">Go (Standard)</option>
+                      <option value="Plus">Plus</option>
+                      <option value="XL">XL</option>
+                      <option value="Black">Black</option>
+                      <option value="Black XL">Black XL</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-slate-400 font-medium block mb-1">1. Rate ($ Broker Base)</label>
+                    <input
+                      type="number"
+                      step="0.50"
+                      min="0"
+                      value={newOrder.rate}
+                      onChange={(e) => setNewOrder({ ...newOrder, rate: Math.max(0, Number(e.target.value)) })}
+                      className="w-full p-2 bg-slate-800 text-white font-bold rounded-lg border border-slate-700 focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-slate-400 font-medium block mb-1">2. Copay ($ Cash)</label>
+                    <input
+                      type="number"
+                      step="0.50"
+                      min="0"
+                      value={newOrder.copay}
+                      onChange={(e) => setNewOrder({ ...newOrder, copay: Math.max(0, Number(e.target.value)) })}
+                      className="w-full p-2 bg-slate-800 text-amber-300 font-bold rounded-lg border border-slate-700 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="text-slate-400 font-medium block mb-1">Trip Fare ($)</label>
-                  <input
-                    type="number"
-                    step="0.50"
-                    value={newOrder.fareAmount}
-                    onChange={(e) => setNewOrder({ ...newOrder, fareAmount: Number(e.target.value) })}
-                    className="w-full p-2 bg-slate-800 text-white rounded-lg border border-slate-700 focus:outline-none focus:border-sky-500"
-                  />
-                </div>
-                <div className="bg-emerald-950/30 p-2 rounded-lg border border-emerald-700/40 text-center flex flex-col justify-center">
-                  <div className="text-[10px] text-emerald-400 font-semibold">AT 15% Margin</div>
-                  <div className="text-emerald-300 font-bold text-sm">
-                    ${((Number(newOrder.fareAmount) || 0) * 0.15).toFixed(2)}
+
+                {/* 5-Column Live Calculation Preview Card */}
+                <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-700/80">
+                  <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mb-2 flex items-center justify-between">
+                    <span>Live 5-Column Payment Breakdown Preview</span>
+                    <span className="text-emerald-400 font-mono">15% AT Commission</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-xs">
+                    <div className="p-2 bg-slate-800/80 rounded-lg border border-slate-700">
+                      <div className="text-[10px] text-slate-400 uppercase">Rate</div>
+                      <div className="text-sm font-bold text-white mt-0.5">${newOrderBreakdown.rate.toFixed(2)}</div>
+                    </div>
+                    <div className="p-2 bg-slate-800/80 rounded-lg border border-slate-700">
+                      <div className="text-[10px] text-amber-400 uppercase">Copay</div>
+                      <div className="text-sm font-bold text-amber-300 mt-0.5">${newOrderBreakdown.copay.toFixed(2)}</div>
+                    </div>
+                    <div className="p-2 bg-sky-950/40 rounded-lg border border-sky-700/40">
+                      <div className="text-[10px] text-sky-400 uppercase">Total Fare</div>
+                      <div className="text-sm font-bold text-sky-300 mt-0.5">${newOrderBreakdown.totalFare.toFixed(2)}</div>
+                    </div>
+                    <div className="p-2 bg-emerald-950/40 rounded-lg border border-emerald-700/40">
+                      <div className="text-[10px] text-emerald-400 uppercase">AT 15% Comm</div>
+                      <div className="text-sm font-bold text-emerald-300 mt-0.5">+${newOrderBreakdown.atCommission15Pct.toFixed(2)}</div>
+                    </div>
+                    <div className="p-2 bg-indigo-950/40 rounded-lg border border-indigo-700/40">
+                      <div className="text-[10px] text-indigo-300 uppercase">Driver Payout</div>
+                      <div className="text-sm font-bold text-indigo-200 mt-0.5">${newOrderBreakdown.driverPayout.toFixed(2)}</div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -958,6 +1431,18 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* MTA PROXIMITY CALLING & TWILIO / TELEGRAM MODAL */}
+      <ProximityCallModal
+        isOpen={isProximityModalOpen}
+        onClose={() => {
+          setIsProximityModalOpen(false);
+          setProximityTargetOrderId(null);
+        }}
+        orders={orders}
+        drivers={drivers}
+        selectedOrderId={proximityTargetOrderId}
+      />
     </div>
   );
 };
