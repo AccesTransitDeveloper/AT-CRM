@@ -1,6 +1,6 @@
 import express from "express";
 import path from "path";
-import { db } from "./server/db";
+import { db } from "./server/db.js";
 import { 
   generateStrategyReportWithGemini, 
   generateAdCopyVariantsWithGemini, 
@@ -9,15 +9,15 @@ import {
   generateAppAnalyticsRecommendationsWithGemini,
   generateDriverAiAssessmentWithGemini,
   processAiAgentCommand
-} from "./server/gemini";
-import { generateTlcTripRecordCsv } from "./src/lib/tlcExport";
+} from "./server/gemini.js";
+import { generateTlcTripRecordCsv } from "./src/lib/tlcExport.js";
 import { 
   generateArrivalTwiML, 
   generateGatherResultTwiML, 
   sendTelegramCancellationAlert 
-} from "./server/proximityCallService";
-import { adminPanelClient } from "./server/adminPanelClient";
-import { syncEngine } from "./server/syncEngine";
+} from "./server/proximityCallService.js";
+import { adminPanelClient } from "./server/adminPanelClient.js";
+import { syncEngine } from "./server/syncEngine.js";
 
 
 export function createApp() {
@@ -65,19 +65,24 @@ export function createApp() {
     res.json(updated);
   });
 
-  app.post("/api/drivers/:id/status", (req, res) => {
+  app.post("/api/drivers/:id/status", async (req, res) => {
     const { status, rejectionReason } = req.body;
-    const updated = db.updateDriverStatus(req.params.id, status, rejectionReason);
-    if (!updated) return res.status(404).json({ error: "Driver not found" });
+    const existingDriver = db.getDriverById(req.params.id);
+    if (!existingDriver) return res.status(404).json({ error: "Driver not found" });
 
-    // Reverse sync to Clone Admin Panel if driver has external_id
-    if (updated.external_id || updated.externalId) {
-      const extId = updated.external_id || updated.externalId!;
-      adminPanelClient.pushDriverStatusUpdate(extId, status, rejectionReason).catch(err => {
-        console.warn(`[ReverseSync] Failed to push status update for driver ${extId}:`, err.message);
-      });
+    // Do not claim a synchronized change when the upstream Admin Panel
+    // rejected it. Local-only drivers remain manageable in the CRM.
+    if (existingDriver.external_id || existingDriver.externalId) {
+      const extId = existingDriver.external_id || existingDriver.externalId!;
+      const upstreamUpdated = await adminPanelClient.pushDriverStatusUpdate(extId, status, rejectionReason);
+      if (!upstreamUpdated) {
+        return res.status(502).json({
+          error: "Driver status was not updated because the Admin Panel rejected the synchronization request."
+        });
+      }
     }
 
+    const updated = db.updateDriverStatus(req.params.id, status, rejectionReason);
     res.json(updated);
   });
 

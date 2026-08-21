@@ -1,5 +1,5 @@
-import { adminPanelClient } from './adminPanelClient';
-import { db } from './db';
+import { adminPanelClient } from './adminPanelClient.js';
+import { db } from './db.js';
 import { 
   Driver, 
   Order, 
@@ -56,8 +56,14 @@ export class SyncEngine {
       console.warn('[SyncEngine] Initial sync warmup encountered warning:', err.message);
     }
 
-    // 2. Schedule Live Order Poller (default: 20s)
-    const pollIntervalMs = parseInt(process.env.CLONE_SYNC_POLL_INTERVAL_MS || '20000', 10);
+    // 2. Schedule trip-history reconciliation. The verified history service
+    // returns complete pages rather than an incremental cursor, so use a
+    // conservative cadence to protect the upstream operational API.
+    const requestedPollIntervalMs = parseInt(process.env.CLONE_SYNC_POLL_INTERVAL_MS || '600000', 10);
+    const pollIntervalMs = Math.max(
+      Number.isFinite(requestedPollIntervalMs) ? requestedPollIntervalMs : 600000,
+      600000
+    );
     this.liveOrderPollTimer = setInterval(() => {
       this.syncLiveOrders().catch(err => {
         console.error('[SyncEngine] Error in live order poll:', err.message);
@@ -118,6 +124,7 @@ export class SyncEngine {
           phone: extDriver.phone,
           email: extDriver.email || existing.email,
           tlcLicenseNumber: extDriver.tlc_license_number,
+          status: this.mapDriverStatus(extDriver.status),
           vehicleType: this.mapVehicleType(extDriver.vehicle?.type),
           vehicleMakeModel: extDriver.vehicle?.make_model || existing.vehicleMakeModel,
           vehiclePlate: extDriver.vehicle?.plate || existing.vehiclePlate,
@@ -154,15 +161,15 @@ export class SyncEngine {
           email: extDriver.email || '',
           tlcLicenseNumber: extDriver.tlc_license_number,
           vehicleType: this.mapVehicleType(extDriver.vehicle?.type),
-          vehicleMakeModel: extDriver.vehicle?.make_model || '2024 Toyota Sienna WAV',
-          vehiclePlate: extDriver.vehicle?.plate || 'T789211C',
-          vehicleYear: extDriver.vehicle?.year || 2024,
+          vehicleMakeModel: extDriver.vehicle?.make_model || '',
+          vehiclePlate: extDriver.vehicle?.plate || '',
+          vehicleYear: extDriver.vehicle?.year || 0,
           isWheelchairAccessible: Boolean(extDriver.vehicle?.is_wheelchair_accessible),
           status: this.mapDriverStatus(extDriver.status),
           rating: extDriver.rating || 5.0,
           totalTrips: extDriver.total_trips || 0,
           isOnline: Boolean(extDriver.is_online),
-          operatingBoroughs: extDriver.operating_boroughs || ['Jackson Heights', 'Jamaica']
+          operatingBoroughs: extDriver.operating_boroughs || []
         };
 
         const created = db.createDriver(mappedNewDriver);
@@ -241,7 +248,7 @@ export class SyncEngine {
       } else {
         // Create new incoming order ingested from external clone app
         const mappedStatus = this.mapOrderStatus(extOrder.status);
-        const totalFare = Number(extOrder.fare?.total_amount || 45.00);
+        const totalFare = Number(extOrder.fare?.total_amount || 0);
         const rate = Number(extOrder.fare?.rate || totalFare);
         const copay = Number(extOrder.fare?.copay || 0.00);
         const atCommissionRate = extOrder.fare?.commission_rate || 0.15;
@@ -253,12 +260,12 @@ export class SyncEngine {
           external_id: extOrder.id,
           externalId: extOrder.id,
           orderNumber: extOrder.order_code,
-          passengerName: extOrder.passenger?.name || 'Mobile App Rider',
-          passengerPhone: extOrder.passenger?.phone || '+1 (718) 555-0199',
-          pickupAddress: extOrder.pickup?.address || 'Jackson Heights, Queens',
-          pickupNeighborhood: extOrder.pickup?.neighborhood || 'Jackson Heights',
-          dropoffAddress: extOrder.dropoff?.address || 'Jamaica, Queens',
-          dropoffNeighborhood: extOrder.dropoff?.neighborhood || 'Jamaica',
+          passengerName: extOrder.passenger?.name || '',
+          passengerPhone: extOrder.passenger?.phone || '',
+          pickupAddress: extOrder.pickup?.address || '',
+          pickupNeighborhood: extOrder.pickup?.neighborhood || '',
+          dropoffAddress: extOrder.dropoff?.address || '',
+          dropoffNeighborhood: extOrder.dropoff?.neighborhood || '',
           driverId: assignedDriverId,
           driverName: assignedDriverName,
           driverPhone: assignedDriverPhone,
@@ -360,10 +367,10 @@ export class SyncEngine {
   public getFieldMappings(): FieldMappingDefinition[] {
     return [
       // DRIVERS MAPPINGS
-      { entity: 'Driver', crmField: 'external_id', externalField: 'id', dataType: 'String (UUID/ID)', sourceOfTruth: 'clone_admin_panel', description: 'Primary Sync Key across systems' },
-      { entity: 'Driver', crmField: 'fullName', externalField: 'full_name', dataType: 'String', sourceOfTruth: 'clone_admin_panel', description: 'Driver legal name' },
-      { entity: 'Driver', crmField: 'phone', externalField: 'phone', dataType: 'String (E.164)', sourceOfTruth: 'clone_admin_panel', description: 'Primary phone contact' },
-      { entity: 'Driver', crmField: 'tlcLicenseNumber', externalField: 'tlc_license_number', dataType: 'String', sourceOfTruth: 'clone_admin_panel', description: 'NYC TLC FHV License number' },
+      { entity: 'Driver', crmField: 'external_id', externalField: '_id', dataType: 'String (ObjectId)', sourceOfTruth: 'clone_admin_panel', description: 'Primary sync key from /api/user/3' },
+      { entity: 'Driver', crmField: 'fullName', externalField: 'firstName + lastName', dataType: 'String', sourceOfTruth: 'clone_admin_panel', description: 'Driver profile name' },
+      { entity: 'Driver', crmField: 'phone', externalField: 'countryPhoneCode + phone', dataType: 'String (E.164)', sourceOfTruth: 'clone_admin_panel', description: 'Primary phone contact' },
+      { entity: 'Driver', crmField: 'status', externalField: 'status (numeric)', dataType: 'Enum', sourceOfTruth: 'bidirectional', description: 'Admin status codes: 1 active, 2 inactive, 3 unapproved, 4 rejected' },
       { entity: 'Driver', crmField: 'status', externalField: 'status', dataType: 'Enum', sourceOfTruth: 'bidirectional', description: 'Driver active/suspended lifecycle' },
       { entity: 'Driver', crmField: 'vehicleType', externalField: 'vehicle.type', dataType: 'Enum (WAV/Green/etc)', sourceOfTruth: 'clone_admin_panel', description: 'Fleet classification' },
       { entity: 'Driver', crmField: 'vehiclePlate', externalField: 'vehicle.plate', dataType: 'String', sourceOfTruth: 'clone_admin_panel', description: 'NYS TLC Vehicle Plate' },
@@ -372,15 +379,14 @@ export class SyncEngine {
       { entity: 'Driver', crmField: 'latestRiskLevel', externalField: 'N/A (CRM-Managed)', dataType: 'Enum (low/med/high)', sourceOfTruth: 'crm', description: 'AI Risk Assessment Engine' },
 
       // ORDERS MAPPINGS
-      { entity: 'Order', crmField: 'external_id', externalField: 'id', dataType: 'String (UUID/ID)', sourceOfTruth: 'clone_admin_panel', description: 'Order ID in clone app' },
-      { entity: 'Order', crmField: 'orderNumber', externalField: 'order_code', dataType: 'String', sourceOfTruth: 'clone_admin_panel', description: 'Public order identifier' },
+      { entity: 'Order', crmField: 'external_id', externalField: '_id', dataType: 'String (ObjectId)', sourceOfTruth: 'clone_admin_panel', description: 'Trip ID from /api/booking_history' },
+      { entity: 'Order', crmField: 'orderNumber', externalField: 'uniqueId', dataType: 'String', sourceOfTruth: 'clone_admin_panel', description: 'Public booking identifier' },
       { entity: 'Order', crmField: 'status', externalField: 'status', dataType: 'Enum', sourceOfTruth: 'clone_admin_panel', description: 'Real-time ride status' },
-      { entity: 'Order', crmField: 'passengerName', externalField: 'passenger.name', dataType: 'String', sourceOfTruth: 'clone_admin_panel', description: 'Passenger rider name' },
-      { entity: 'Order', crmField: 'passengerPhone', externalField: 'passenger.phone', dataType: 'String', sourceOfTruth: 'clone_admin_panel', description: 'Passenger contact number' },
-      { entity: 'Order', crmField: 'driverId', externalField: 'driver.external_id', dataType: 'String (Lookup)', sourceOfTruth: 'clone_admin_panel', description: 'Assigned driver reference' },
-      { entity: 'Order', crmField: 'fareAmount', externalField: 'fare.total_amount', dataType: 'Currency (USD)', sourceOfTruth: 'clone_admin_panel', description: 'Total gross trip fare' },
-      { entity: 'Order', crmField: 'pickupAddress', externalField: 'pickup.address', dataType: 'String', sourceOfTruth: 'clone_admin_panel', description: 'Pickup location street address' },
-      { entity: 'Order', crmField: 'dropoffAddress', externalField: 'dropoff.address', dataType: 'String', sourceOfTruth: 'clone_admin_panel', description: 'Dropoff location street address' },
+      { entity: 'Order', crmField: 'passengerName', externalField: 'customerDetail.name', dataType: 'String', sourceOfTruth: 'clone_admin_panel', description: 'Passenger rider name' },
+      { entity: 'Order', crmField: 'passengerPhone', externalField: 'customerDetail.phone', dataType: 'String', sourceOfTruth: 'clone_admin_panel', description: 'Passenger contact number' },
+      { entity: 'Order', crmField: 'fareAmount', externalField: 'bookingInvoice.actual.total', dataType: 'Currency (USD)', sourceOfTruth: 'clone_admin_panel', description: 'Actual gross trip fare' },
+      { entity: 'Order', crmField: 'pickupAddress', externalField: 'pickupAddress.address', dataType: 'String', sourceOfTruth: 'clone_admin_panel', description: 'Pickup location street address' },
+      { entity: 'Order', crmField: 'dropoffAddress', externalField: 'destinationAddresses[last].address', dataType: 'String', sourceOfTruth: 'clone_admin_panel', description: 'Final dropoff street address' },
       { entity: 'Order', crmField: 'atCommissionAmount', externalField: 'N/A (Calculated 15%)', dataType: 'Currency (USD)', sourceOfTruth: 'crm', description: 'Accessible Transit 15% split' }
     ];
   }

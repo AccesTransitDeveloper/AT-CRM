@@ -61,7 +61,7 @@ import {
   getPickupCoordinates,
   triggerTwilioPassengerCall,
   sendTelegramCancellationAlert
-} from './proximityCallService';
+} from './proximityCallService.js';
 import { 
   initialComplianceDocuments,
   initialComplianceAuditLogs,
@@ -70,14 +70,14 @@ import {
   getDaysRemainingText,
   getRelativeDate,
   getRelativeIso
-} from './complianceData';
+} from './complianceData.js';
 import {
   initialDriverPayouts,
   initialDriverAiAssessments,
   generateHistoricalDriverOrders,
   calculateDriverFinancials,
   calculateDriverActivity
-} from './driverAnalyticsData';
+} from './driverAnalyticsData.js';
 import {
   initialReferrals,
   initialReferralRewards,
@@ -87,7 +87,7 @@ import {
   calculateReferralDashboardStats,
   generateReferralCode,
   formatReferralUrl
-} from './referralData';
+} from './referralData.js';
 import {
   APP_METADATA_LIST,
   generateInitialDailyMetrics,
@@ -97,7 +97,7 @@ import {
   initialAppSentimentSummaries,
   initialAppAiRecommendations,
   calculateFunnelForApp
-} from './appAnalyticsData';
+} from './appAnalyticsData.js';
 
 // Mock database storage for Accessible Transit CRM
 
