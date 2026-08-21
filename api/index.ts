@@ -17,12 +17,10 @@ export default async function handler(request: Request, response: Response) {
     const app = await getApp();
     return app(request, response);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown initialization error';
     console.error('Failed to initialize the CRM API function:', error);
 
     return response.status(500).json({
-      error: 'CRM API initialization failed.',
-      diagnostic: message
+      error: 'CRM API initialization failed.'
     });
   }
 }
