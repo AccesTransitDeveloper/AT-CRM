@@ -888,6 +888,18 @@ class DatabaseStore {
   appReviews: AppReview[] = [...initialAppReviews];
   appSentimentSummaries: Record<string, AppSentimentSummary> = { ...initialAppSentimentSummaries };
   appAiRecommendations: AppAiRecommendation[] = [...initialAppAiRecommendations];
+
+  removeSeededDriverFixtures(): void {
+    const fixtureIds = new Set(initialDrivers.map((driver) => driver.id));
+    this.drivers = this.drivers.filter((driver) => !fixtureIds.has(driver.id));
+  }
+
+  removeSeededOrderFixtures(): void {
+    const fixtureIds = new Set(initialOrders.map((order) => order.id));
+    this.orders = this.orders.filter(
+      (order) => !fixtureIds.has(order.id) && !order.id.startsWith('ord-gen-')
+    );
+  }
   referrals: ReferralRecord[] = [...initialReferrals];
   referralRewards: ReferralReward[] = [...initialReferralRewards];
   commissionLogs: CommissionRateLog[] = [...initialCommissionLogs];

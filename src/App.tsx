@@ -21,7 +21,7 @@ import { EmployeeLocationConsentModal } from './components/employees/EmployeeLoc
 import { ReferralLandingPage } from './components/referrals/ReferralLandingPage';
 import { AiAssistantPanel } from './components/AiAssistantPanel';
 import { useEmployeeLocationTracker } from './hooks/useEmployeeLocationTracker';
-import { initialDrivers, initialOrders, initialBrokers, initialTickets, sampleSettlements } from '../server/db';
+import { initialBrokers, initialTickets, sampleSettlements } from '../server/db';
 import { Shield, Sparkles, CheckCircle2, AlertCircle, Camera } from 'lucide-react';
 import { useTranslation } from './lib/i18n';
 
@@ -33,8 +33,8 @@ export default function App() {
 
   // Application Data States
   const [stats, setStats] = useState<SystemStats | null>(null);
-  const [drivers, setDrivers] = useState<Driver[]>(initialDrivers);
-  const [orders, setOrders] = useState<Order[]>(initialOrders);
+  const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [brokers, setBrokers] = useState<Broker[]>(initialBrokers);
   const [tickets, setTickets] = useState<Ticket[]>(initialTickets);
   const [settlements, setSettlements] = useState<CommissionSettlement[]>(sampleSettlements);

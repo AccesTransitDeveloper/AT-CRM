@@ -27,6 +27,30 @@ export function createApp() {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
+  // Vercel functions do not run the long-lived polling process from
+  // startServer(). Synchronize on read instead, so production never responds
+  // with the seeded records when live Admin Panel data is unavailable.
+  async function synchronizeLiveData(
+    response: express.Response,
+    resources: { drivers?: boolean; orders?: boolean }
+  ): Promise<boolean> {
+    try {
+      if (resources.drivers) {
+        await syncEngine.syncDrivers();
+      }
+      if (resources.orders) {
+        await syncEngine.syncLiveOrders();
+      }
+      return true;
+    } catch (error) {
+      console.error('Live Admin Panel synchronization failed:', error);
+      response.status(502).json({
+        error: 'Live Accessible Transit data is temporarily unavailable. Please try again shortly.'
+      });
+      return false;
+    }
+  }
+
   // Health check
   app.get("/api/health", (req, res) => {
     res.json({
@@ -37,18 +61,21 @@ export function createApp() {
   });
 
   // System statistics
-  app.get("/api/stats", (req, res) => {
+  app.get("/api/stats", async (req, res) => {
+    if (!await synchronizeLiveData(res, { drivers: true, orders: true })) return;
     res.json(db.getStats());
   });
 
   // DRIVERS API
-  app.get("/api/drivers", (req, res) => {
+  app.get("/api/drivers", async (req, res) => {
+    if (!await synchronizeLiveData(res, { drivers: true })) return;
     const { status, search, vehicleType } = req.query as Record<string, string>;
     const drivers = db.getDrivers({ status, search, vehicleType });
     res.json(drivers);
   });
 
-  app.get("/api/drivers/:id", (req, res) => {
+  app.get("/api/drivers/:id", async (req, res) => {
+    if (!await synchronizeLiveData(res, { drivers: true })) return;
     const driver = db.getDriverById(req.params.id);
     if (!driver) return res.status(404).json({ error: "Driver not found" });
     res.json(driver);
@@ -92,7 +119,8 @@ export function createApp() {
     res.json({ success: true, message: "Driver deleted successfully" });
   });
 
-  app.get("/api/drivers/:id/trips", (req, res) => {
+  app.get("/api/drivers/:id/trips", async (req, res) => {
+    if (!await synchronizeLiveData(res, { drivers: true, orders: true })) return;
     const trips = db.getDriverTrips(req.params.id);
     res.json(trips);
   });
@@ -149,13 +177,15 @@ export function createApp() {
   });
 
   // ORDERS API
-  app.get("/api/orders", (req, res) => {
+  app.get("/api/orders", async (req, res) => {
+    if (!await synchronizeLiveData(res, { drivers: true, orders: true })) return;
     const { status, type, source, search, neighborhood } = req.query as Record<string, string>;
     const orders = db.getOrders({ status, type, source, search, neighborhood });
     res.json(orders);
   });
 
-  app.get("/api/orders/:id", (req, res) => {
+  app.get("/api/orders/:id", async (req, res) => {
+    if (!await synchronizeLiveData(res, { drivers: true, orders: true })) return;
     const order = db.getOrderById(req.params.id);
     if (!order) return res.status(404).json({ error: "Order not found" });
     res.json(order);

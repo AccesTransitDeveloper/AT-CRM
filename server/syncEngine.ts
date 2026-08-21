@@ -99,6 +99,7 @@ export class SyncEngine {
    */
   public async syncDrivers(): Promise<{ created: number; updated: number; total: number }> {
     const rawExternalDrivers = await adminPanelClient.fetchDrivers();
+    db.removeSeededDriverFixtures();
     let createdCount = 0;
     let updatedCount = 0;
 
@@ -194,6 +195,7 @@ export class SyncEngine {
    */
   public async syncLiveOrders(): Promise<{ created: number; updated: number; total: number }> {
     const rawExternalOrders = await adminPanelClient.fetchLiveOrders();
+    db.removeSeededOrderFixtures();
     let createdCount = 0;
     let updatedCount = 0;
 
