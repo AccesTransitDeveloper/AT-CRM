@@ -1116,7 +1116,7 @@ export interface SyncAuditLog {
 
 export interface IntegrationConfig {
   baseUrl: string;
-  authMode: 'jwt' | 'oauth2_client_credentials';
+  authMode: 'jwt' | 'oauth2_client_credentials' | 'accessible_transit_admin';
   clientIdMasked: string;
   liveOrderPollIntervalMs: number;
   driverProfileSyncIntervalMs: number;

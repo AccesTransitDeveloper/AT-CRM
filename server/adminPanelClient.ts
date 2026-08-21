@@ -26,23 +26,23 @@ interface RequestRateLimiter {
  * AdminPanelClient - Unified Backend Integration Gateway
  * 
  * Exclusively responsible for all communications between Accessible Transit CRM
- * and the Clone Application Admin Panel REST API.
+ * and the live Accessible Transit Admin Panel REST API.
  * 
  * Features:
- * - Secure Service Account Auth (OAuth2 / JWT) from environment variables
- * - Auto-login at backend startup and auto-refresh before JWT expiry
+ * - Secure admin sign-in from environment variables
+ * - Re-authentication before the upstream session expires
  * - Exponential backoff retry logic for transient API faults
  * - Token-safe audit logging (no raw tokens written to logs)
  * - Rate limiting to safeguard against upstream IP bans
  * - HTTPS-only enforcement in production
- * - Standalone fallback / sandbox data simulator for smooth test coverage
+ * - Explicit failures when a required upstream resource is unavailable
  */
 export class AdminPanelClient {
   private static instance: AdminPanelClient;
 
   // Configuration (read strictly from env vars)
   private baseUrl: string;
-  private authMode: 'jwt' | 'oauth2_client_credentials';
+  private authMode: 'accessible_transit_admin';
   private clientId: string;
   private clientSecret: string;
   private username: string;
@@ -77,7 +77,8 @@ export class AdminPanelClient {
   private lastError: string | null = null;
   private lastErrorTime: string | null = null;
 
-  // In-Memory Simulated External Cloud Store (for development & sandbox verification)
+  // Legacy fixtures are kept only for webhook compatibility. They must never be
+  // returned as live data because that would hide a broken upstream connection.
   private mockExternalDrivers: ExternalCloneDriverPayload[] = [
     {
       id: "CLONE_DRV_8921",
@@ -256,19 +257,19 @@ export class AdminPanelClient {
   ];
 
   private constructor() {
-    this.baseUrl = (process.env.CLONE_API_BASE_URL || 'https://api.clone-admin.accessibletransit.com').replace(/\/$/, '');
-    this.authMode = (process.env.CLONE_API_AUTH_MODE as any) || 'jwt';
-    this.clientId = process.env.CLONE_API_CLIENT_ID || 'at_service_account_crm_prod';
-    this.clientSecret = process.env.CLONE_API_CLIENT_SECRET || 'sec_at_clone_api_993410f7a';
-    this.username = process.env.CLONE_API_USERNAME || 'svc_accessible_transit_crm';
-    this.passwordMasked = Boolean(process.env.CLONE_API_PASSWORD || this.clientSecret);
-    this.isConfigured = Boolean(process.env.CLONE_API_BASE_URL || process.env.CLONE_API_CLIENT_SECRET);
+    this.baseUrl = (process.env.AT_ADMIN_API_BASE_URL || 'https://api.accessibletransit.com').replace(/\/$/, '');
+    this.authMode = 'accessible_transit_admin';
+    this.clientId = 'accessible-transit-admin';
+    this.clientSecret = '';
+    this.username = process.env.AT_ADMIN_USERNAME || '';
+    this.passwordMasked = Boolean(process.env.AT_ADMIN_PASSWORD);
+    this.isConfigured = Boolean(this.username && this.passwordMasked);
 
     this.addLog({
       type: 'auth_token_issued',
       status: 'info',
       summary: 'AdminPanelClient initialized in CRM backend',
-      details: `Target: ${this.baseUrl} | Auth Mode: ${this.authMode} | Service Account: ${this.clientId}`
+      details: `Target: ${this.baseUrl} | Auth Mode: Accessible Transit Admin Sign-in | Credentials configured: ${this.isConfigured ? 'yes' : 'no'}`
     });
   }
 
@@ -300,16 +301,8 @@ export class AdminPanelClient {
     this.authState.isRefreshing = true;
 
     try {
-      // If we have a refresh token and this is a refresh request, attempt refresh flow first
-      if (forceRefresh && this.authState.refreshToken) {
-        const refreshed = await this.executeRefreshTokenRequest();
-        if (refreshed) {
-          this.authState.isRefreshing = false;
-          return { success: true, message: 'JWT token refreshed successfully via refresh_token' };
-        }
-      }
-
-      // Initial or fallback primary login authentication
+      // The Admin Panel exposes a short-lived login session rather than a
+      // refresh-token endpoint, so every renewal safely performs a new sign-in.
       const result = await this.executeLoginWithRetry();
       this.authState.isRefreshing = false;
       return result;
@@ -327,6 +320,7 @@ export class AdminPanelClient {
   private async executeLoginWithRetry(maxRetries: number = 3): Promise<{ success: boolean; message: string }> {
     let attempt = 0;
     let delayMs = 500;
+    const startedAt = Date.now();
 
     while (attempt < maxRetries) {
       attempt++;
@@ -336,53 +330,62 @@ export class AdminPanelClient {
           throw new Error('Insecure HTTP protocol blocked. HTTPS is required for AdminPanelClient communications.');
         }
 
-        // Mock mode / sandbox fallback when offline or in dev preview
-        if (process.env.NODE_ENV !== 'production' && !process.env.CLONE_API_LIVE_URL) {
-          const fakeExpiresInSeconds = 3600; // 1 hour
-          this.authState.accessToken = `jwt_mock_${Date.now()}_at_crm`;
-          this.authState.refreshToken = `rt_mock_${Date.now()}_at_crm`;
-          this.authState.expiresAt = Date.now() + (fakeExpiresInSeconds * 1000);
-          this.authState.lastRefreshTime = new Date().toISOString();
-          this.authState.consecutiveAuthErrors = 0;
-          this.consecutiveErrors = 0;
-          this.firstFailureTimestamp = null;
-
-          this.addLog({
-            type: 'auth_token_issued',
-            status: 'success',
-            summary: `JWT Token issued successfully (attempt ${attempt})`,
-            details: `Service Account: ${this.clientId} | Expiry: in 60 minutes | Auth Method: ${this.authMode}`,
-            durationMs: 80
-          });
-
-          return { success: true, message: 'Authenticated successfully with Clone Admin Panel API' };
+        if (!this.isConfigured) {
+          throw new Error('AT_ADMIN_USERNAME and AT_ADMIN_PASSWORD must be configured before connecting to the Admin Panel.');
         }
 
-        // Live Real HTTP Request
-        const response = await fetch(`${this.baseUrl}/api/v1/auth/token`, {
+        const deviceTokenResponse = await fetch(`${this.baseUrl}/api/auth/get_token`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'type': '1',
             'User-Agent': 'AccessibleTransit-CRM/2026.1'
           },
           body: JSON.stringify({
-            client_id: this.clientId,
-            client_secret: this.clientSecret,
-            grant_type: 'client_credentials',
-            scope: 'drivers:read drivers:write orders:read orders:write live_locations:read'
+            deviceId: 'at-crm-sync-service',
+            deviceType: 'WEB',
+            manufacturer: 'Replit',
+            deviceName: 'Accessible Transit CRM',
+            os: 'Linux',
+            appVersion: '1.0.0',
+            isShowSuccessToast: false
           })
         });
 
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const deviceToken = deviceTokenResponse.headers.get('authorization');
+        if (!deviceTokenResponse.ok || !deviceToken) {
+          throw new Error(`Admin Panel device-token request failed (HTTP ${deviceTokenResponse.status}).`);
         }
 
-        const data = await response.json();
-        const expiresInSeconds = data.expires_in || 3600;
+        const response = await fetch(`${this.baseUrl}/api/auth/signin`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'type': '1',
+            'Authorization': deviceToken,
+            'User-Agent': 'AccessibleTransit-CRM/2026.1'
+          },
+          body: JSON.stringify({
+            email: this.username,
+            username: this.username,
+            password: process.env.AT_ADMIN_PASSWORD,
+            loginBy: 1,
+            deviceId: 'at-crm-sync-service',
+            deviceType: 'WEB',
+            isShowSuccessToast: false
+          })
+        });
+
+        const accessToken = response.headers.get('authorization');
+        if (!response.ok || !accessToken) {
+          throw new Error(`Admin Panel sign-in failed (HTTP ${response.status}).`);
+        }
         
-        this.authState.accessToken = data.access_token;
-        this.authState.refreshToken = data.refresh_token || null;
-        this.authState.expiresAt = Date.now() + (expiresInSeconds * 1000);
+        this.authState.accessToken = accessToken;
+        this.authState.refreshToken = null;
+        // The upstream API does not disclose token expiry. Renew early instead
+        // of persisting credentials or treating an expired session as valid.
+        this.authState.expiresAt = Date.now() + (20 * 60 * 1000);
         this.authState.lastRefreshTime = new Date().toISOString();
         this.authState.consecutiveAuthErrors = 0;
         this.consecutiveErrors = 0;
@@ -391,12 +394,12 @@ export class AdminPanelClient {
         this.addLog({
           type: 'auth_token_issued',
           status: 'success',
-          summary: `OAuth/JWT Token issued (attempt ${attempt})`,
-          details: `Expires in ${expiresInSeconds}s | Scope verified`,
-          durationMs: 120
+          summary: `Admin Panel session established (attempt ${attempt})`,
+          details: 'Authenticated using the configured Admin Panel account. Session value is never logged.',
+          durationMs: Date.now() - startedAt
         });
 
-        return { success: true, message: 'Authentication successful' };
+        return { success: true, message: 'Authenticated successfully with Accessible Transit Admin Panel' };
       } catch (err: any) {
         if (attempt >= maxRetries) {
           this.addLog({
@@ -419,49 +422,7 @@ export class AdminPanelClient {
    * Refresh token execution
    */
   private async executeRefreshTokenRequest(): Promise<boolean> {
-    try {
-      if (process.env.NODE_ENV !== 'production' && !process.env.CLONE_API_LIVE_URL) {
-        this.authState.accessToken = `jwt_mock_refreshed_${Date.now()}`;
-        this.authState.expiresAt = Date.now() + (3600 * 1000);
-        this.authState.lastRefreshTime = new Date().toISOString();
-
-        this.addLog({
-          type: 'auth_token_refreshed',
-          status: 'success',
-          summary: 'JWT Token renewed successfully via Refresh Token',
-          details: 'Valid for next 60 minutes. No service disruption.'
-        });
-        return true;
-      }
-
-      const response = await fetch(`${this.baseUrl}/api/v1/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          refresh_token: this.authState.refreshToken,
-          client_id: this.clientId
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        this.authState.accessToken = data.access_token;
-        if (data.refresh_token) this.authState.refreshToken = data.refresh_token;
-        this.authState.expiresAt = Date.now() + ((data.expires_in || 3600) * 1000);
-        this.authState.lastRefreshTime = new Date().toISOString();
-
-        this.addLog({
-          type: 'auth_token_refreshed',
-          status: 'success',
-          summary: 'JWT Token auto-refreshed via upstream API',
-          details: `Next expiry: ${new Date(this.authState.expiresAt).toLocaleTimeString()}`
-        });
-        return true;
-      }
-      return false;
-    } catch {
-      return false;
-    }
+    return false;
   }
 
   /**
@@ -469,7 +430,8 @@ export class AdminPanelClient {
    */
   private async ensureAuthenticated(): Promise<void> {
     if (!this.authState.accessToken || (this.authState.expiresAt && this.authState.expiresAt - Date.now() < 30000)) {
-      await this.authenticate(Boolean(this.authState.refreshToken));
+      const result = await this.authenticate();
+      if (!result.success) throw new Error(result.message);
     }
   }
 
@@ -502,6 +464,130 @@ export class AdminPanelClient {
   // 3. EXTERNAL API DATA FETCH METHODS (DRIVERS, ORDERS, LOCATIONS)
   // =========================================================================
 
+  private async fetchAdminCollection(path: string, params?: Record<string, string | number | undefined>): Promise<Record<string, any>[]> {
+    const url = new URL(`${this.baseUrl}${path}`);
+    for (const [key, value] of Object.entries(params || {})) {
+      if (value !== undefined) url.searchParams.set(key, String(value));
+    }
+
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': this.authState.accessToken || '',
+        'type': '1',
+        'Accept': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Admin Panel resource ${path} failed (HTTP ${response.status}).`);
+    }
+
+    const body = await response.json();
+    const data = body?.data ?? body;
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data?.data)) return data.data;
+    if (Array.isArray(data?.drivers)) return data.drivers;
+    if (Array.isArray(data?.bookings)) return data.bookings;
+    if (Array.isArray(data?.orders)) return data.orders;
+    return [];
+  }
+
+  private mapAdminDriver(raw: Record<string, any>): ExternalCloneDriverPayload {
+    const vehicle = raw.vehicleDetail || raw.vehicle || {};
+    const location = raw.location || raw.currentLocation;
+    const status = String(raw.status || raw.driverStatus || 'offline').toLowerCase();
+
+    return {
+      id: String(raw._id || raw.id || raw.driverId),
+      full_name: String(raw.fullName || raw.name || `${raw.firstName || ''} ${raw.lastName || ''}`.trim() || 'Unknown driver'),
+      phone: String(raw.phone || raw.phoneNumber || ''),
+      email: raw.email || undefined,
+      tlc_license_number: String(raw.tlcLicenseNumber || raw.licenseNumber || raw.license || ''),
+      status: ['active', 'pending_approval', 'suspended', 'rejected', 'offline'].includes(status)
+        ? status as ExternalCloneDriverPayload['status']
+        : 'offline',
+      vehicle: {
+        type: String(vehicle.type || vehicle.vehicleType || raw.vehicleType || ''),
+        make_model: String(vehicle.make_model || vehicle.makeModel || `${vehicle.make || ''} ${vehicle.model || ''}`.trim()),
+        plate: String(vehicle.plate || vehicle.plateNumber || raw.vehiclePlate || ''),
+        year: Number(vehicle.year || raw.vehicleYear || 0),
+        is_wheelchair_accessible: Boolean(vehicle.is_wheelchair_accessible ?? vehicle.isWheelchairAccessible ?? raw.isWheelchairAccessible)
+      },
+      operating_boroughs: Array.isArray(raw.operatingBoroughs) ? raw.operatingBoroughs : undefined,
+      rating: Number(raw.rating || 0) || undefined,
+      total_trips: Number(raw.totalTrips || raw.completedTrips || 0) || undefined,
+      is_online: Boolean(raw.isOnline ?? raw.online),
+      location: location && Number.isFinite(Number(location.lat ?? location.latitude)) && Number.isFinite(Number(location.lng ?? location.longitude))
+        ? {
+            lat: Number(location.lat ?? location.latitude),
+            lng: Number(location.lng ?? location.longitude),
+            neighborhood: String(location.neighborhood || location.address || ''),
+            updated_at: String(location.updated_at || location.updatedAt || new Date().toISOString())
+          }
+        : undefined,
+      updated_at: raw.updatedAt || raw.updated_at
+    };
+  }
+
+  private mapAdminOrder(raw: Record<string, any>): ExternalCloneOrderPayload {
+    const pickup = raw.pickup || raw.pickupLocation || {};
+    const dropoff = raw.dropoff || raw.destination || raw.dropoffLocation || {};
+    const passenger = raw.passenger || raw.user || raw.customer || {};
+    const driver = raw.driver || {};
+    const statusMap: Record<string, ExternalCloneOrderPayload['status']> = {
+      NEW: 'NEW',
+      PENDING: 'NEW',
+      ACCEPTED: 'ACCEPTED',
+      ASSIGNED: 'ACCEPTED',
+      DRIVER_EN_ROUTE: 'EN_ROUTE',
+      EN_ROUTE: 'EN_ROUTE',
+      STARTED: 'ON_TRIP',
+      ON_TRIP: 'ON_TRIP',
+      COMPLETED: 'COMPLETED',
+      CANCELLED: 'CANCELLED'
+    };
+    const rawStatus = String(raw.status || raw.bookingStatus || 'NEW').toUpperCase();
+
+    return {
+      id: String(raw._id || raw.id || raw.bookingId),
+      order_code: String(raw.uniqueId || raw.bookingNumber || raw.orderCode || raw._id || raw.id),
+      status: statusMap[rawStatus] || 'NEW',
+      passenger: {
+        name: String(passenger.fullName || passenger.name || raw.userName || ''),
+        phone: String(passenger.phone || passenger.phoneNumber || raw.userPhone || '')
+      },
+      driver: driver && (driver._id || driver.id)
+        ? {
+            external_id: String(driver._id || driver.id),
+            name: String(driver.fullName || driver.name || ''),
+            phone: String(driver.phone || driver.phoneNumber || '')
+          }
+        : undefined,
+      pickup: {
+        address: String(pickup.address || pickup.addressText || raw.pickupAddress || ''),
+        neighborhood: String(pickup.neighborhood || pickup.city || ''),
+        lat: Number(pickup.lat ?? pickup.latitude) || undefined,
+        lng: Number(pickup.lng ?? pickup.longitude) || undefined
+      },
+      dropoff: {
+        address: String(dropoff.address || dropoff.addressText || raw.destinationAddress || ''),
+        neighborhood: String(dropoff.neighborhood || dropoff.city || ''),
+        lat: Number(dropoff.lat ?? dropoff.latitude) || undefined,
+        lng: Number(dropoff.lng ?? dropoff.longitude) || undefined
+      },
+      fare: {
+        total_amount: Number(raw.totalFare || raw.totalAmount || raw.estimatedFare || 0),
+        rate: Number(raw.rate || raw.fare || 0) || undefined,
+        copay: Number(raw.copay || 0) || undefined,
+        commission_rate: Number(raw.commissionRate || 0) || undefined
+      },
+      vehicle_type: raw.vehicleType || raw.vehicle?.type,
+      requires_wav: Boolean(raw.requiresWav || raw.isWheelchairAccessible),
+      created_at: String(raw.createdAt || raw.created_at || new Date().toISOString()),
+      updated_at: String(raw.updatedAt || raw.updated_at || new Date().toISOString())
+    };
+  }
+
   /**
    * Fetch Driver Profiles from Clone Admin Panel API
    */
@@ -511,40 +597,11 @@ export class AdminPanelClient {
     const startTime = Date.now();
 
     try {
-      // Sandbox/Simulator Mode
-      if (process.env.NODE_ENV !== 'production' && !process.env.CLONE_API_LIVE_URL) {
-        this.totalSyncedDrivers = this.mockExternalDrivers.length;
-        this.lastDriversSync = new Date().toISOString();
-
-        this.addLog({
-          type: 'driver_profile_sync',
-          status: 'success',
-          summary: `Synchronized ${this.mockExternalDrivers.length} driver profiles from Admin Panel`,
-          details: `Source: GET /api/v1/drivers | Matched by external_id`,
-          recordsCount: this.mockExternalDrivers.length,
-          durationMs: Date.now() - startTime,
-          endpoint: '/api/v1/drivers'
-        });
-
-        return this.mockExternalDrivers;
-      }
-
-      // Live Request
-      const url = new URL(`${this.baseUrl}/api/v1/drivers`);
-      if (params?.updatedSince) url.searchParams.set('updated_since', params.updatedSince);
-      if (params?.limit) url.searchParams.set('limit', String(params.limit));
-
-      const res = await fetch(url.toString(), {
-        headers: {
-          'Authorization': `Bearer ${this.authState.accessToken}`,
-          'Accept': 'application/json'
-        }
-      });
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-
-      const data = await res.json();
-      const drivers: ExternalCloneDriverPayload[] = Array.isArray(data) ? data : (data.drivers || []);
+      const endpoint = process.env.AT_ADMIN_DRIVERS_PATH || '/api/driver';
+      const drivers = (await this.fetchAdminCollection(endpoint, {
+        updatedSince: params?.updatedSince,
+        limit: params?.limit || 100
+      })).map((driver) => this.mapAdminDriver(driver));
       
       this.totalSyncedDrivers = drivers.length;
       this.lastDriversSync = new Date().toISOString();
@@ -552,10 +609,10 @@ export class AdminPanelClient {
       this.addLog({
         type: 'driver_profile_sync',
         status: 'success',
-        summary: `Synchronized ${drivers.length} driver profiles from Clone API`,
+        summary: `Synchronized ${drivers.length} driver profiles from Accessible Transit Admin`,
         recordsCount: drivers.length,
         durationMs: Date.now() - startTime,
-        endpoint: '/api/v1/drivers'
+        endpoint
       });
 
       return drivers;
@@ -574,47 +631,13 @@ export class AdminPanelClient {
     const startTime = Date.now();
 
     try {
-      // Sandbox/Simulator Mode
-      if (process.env.NODE_ENV !== 'production' && !process.env.CLONE_API_LIVE_URL) {
-        this.totalSyncedOrders = this.mockExternalOrders.length;
-        this.lastLiveOrdersSync = new Date().toISOString();
-
-        // Update timestamps on mock items to simulate dynamic activity
-        this.mockExternalOrders.forEach(o => {
-          if (o.status === 'EN_ROUTE') {
-            o.updated_at = new Date().toISOString();
-          }
-        });
-
-        this.addLog({
-          type: 'orders_poll',
-          status: 'success',
-          summary: `Live Poll: ${this.mockExternalOrders.length} active orders polled from Clone API`,
-          details: `Active orders: ${this.mockExternalOrders.map(o => o.order_code).join(', ')}`,
-          recordsCount: this.mockExternalOrders.length,
-          durationMs: Date.now() - startTime,
-          endpoint: '/api/v1/orders'
-        });
-
-        return this.mockExternalOrders;
-      }
-
-      // Live Request
-      const url = new URL(`${this.baseUrl}/api/v1/orders`);
-      if (params?.status) url.searchParams.set('status', params.status);
-      if (params?.updatedSince) url.searchParams.set('updated_since', params.updatedSince);
-
-      const res = await fetch(url.toString(), {
-        headers: {
-          'Authorization': `Bearer ${this.authState.accessToken}`,
-          'Accept': 'application/json'
-        }
-      });
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-
-      const data = await res.json();
-      const orders: ExternalCloneOrderPayload[] = Array.isArray(data) ? data : (data.orders || []);
+      const endpoint = process.env.AT_ADMIN_ORDERS_PATH || '/api/booking';
+      const orders = (await this.fetchAdminCollection(endpoint, {
+        status: params?.status,
+        updatedSince: params?.updatedSince,
+        page: 1,
+        limit: 100
+      })).map((order) => this.mapAdminOrder(order));
 
       this.totalSyncedOrders = orders.length;
       this.lastLiveOrdersSync = new Date().toISOString();
@@ -622,10 +645,10 @@ export class AdminPanelClient {
       this.addLog({
         type: 'orders_poll',
         status: 'success',
-        summary: `Live Poll: ${orders.length} orders synchronized`,
+        summary: `Live Poll: ${orders.length} orders synchronized from Accessible Transit Admin`,
         recordsCount: orders.length,
         durationMs: Date.now() - startTime,
-        endpoint: '/api/v1/orders'
+        endpoint
       });
 
       return orders;
@@ -644,19 +667,29 @@ export class AdminPanelClient {
     await this.checkRateLimit();
 
     try {
-      // In Mock Mode
-      const found = this.mockExternalDrivers.find(d => d.id === externalId);
-      if (found) {
-        found.status = status as any;
-        found.updated_at = new Date().toISOString();
+      const template = process.env.AT_ADMIN_DRIVER_STATUS_PATH_TEMPLATE;
+      if (!template) {
+        throw new Error('Reverse driver-status sync is disabled until AT_ADMIN_DRIVER_STATUS_PATH_TEMPLATE is configured.');
       }
+
+      const endpoint = template.replace('{id}', encodeURIComponent(externalId));
+      const response = await fetch(`${this.baseUrl}${endpoint}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': this.authState.accessToken || '',
+          'type': '1'
+        },
+        body: JSON.stringify({ status, reason, isShowSuccessToast: false })
+      });
+      if (!response.ok) throw new Error(`Admin Panel status update failed (HTTP ${response.status}).`);
 
       this.addLog({
         type: 'reverse_sync',
         status: 'success',
         summary: `Reverse Sync: Pushed Driver ${externalId} status -> "${status}" to Admin Panel`,
         details: reason ? `Reason: ${reason}` : 'Updated by CRM Manager',
-        endpoint: `/api/v1/drivers/${externalId}/status`
+        endpoint
       });
 
       return true;
@@ -753,13 +786,13 @@ export class AdminPanelClient {
     return {
       status: connectionStatus,
       statusMessage: connectionStatus === 'connected' 
-        ? 'Connected & Synchronized with Clone Admin Panel' 
+        ? 'Connected to Accessible Transit Admin Panel' 
         : connectionStatus === 'degraded'
-        ? 'Operating in degraded mode with cached CRM fallback'
+        ? 'Admin Panel is reachable but a data synchronization request failed'
         : connectionStatus === 'unauthorized'
-        ? 'Service account authorization error'
-        : 'External API Offline (Showing local CRM data)',
-      mode: process.env.CLONE_API_LIVE_URL ? 'live_cloud' : 'simulation_sandbox',
+        ? 'Admin Panel authorization error'
+        : 'Accessible Transit Admin Panel is unavailable',
+      mode: 'live_cloud',
       auth: {
         authenticated: Boolean(this.authState.accessToken),
         tokenExpiresAt: this.authState.expiresAt ? new Date(this.authState.expiresAt).toISOString() : undefined,
@@ -775,8 +808,8 @@ export class AdminPanelClient {
         livePollingActive: true,
         pollIntervalSeconds: Math.floor(parseInt(process.env.CLONE_SYNC_POLL_INTERVAL_MS || '20000', 10) / 1000),
         profileSyncIntervalMinutes: Math.floor(parseInt(process.env.CLONE_SYNC_PROFILE_INTERVAL_MS || '600000', 10) / 60000),
-        totalSyncedDrivers: this.totalSyncedDrivers || this.mockExternalDrivers.length,
-        totalSyncedOrders: this.totalSyncedOrders || this.mockExternalOrders.length,
+        totalSyncedDrivers: this.totalSyncedDrivers,
+        totalSyncedOrders: this.totalSyncedOrders,
         totalSyncErrors: this.totalSyncErrors,
         lastError: this.lastError || undefined,
         lastErrorTime: this.lastErrorTime || undefined,

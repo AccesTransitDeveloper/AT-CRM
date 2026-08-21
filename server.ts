@@ -1496,12 +1496,12 @@ export function createApp() {
 
 export async function startServer() {
   const app = createApp();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT || 3000);
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: { middlewareMode: true, allowedHosts: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
@@ -1522,4 +1522,3 @@ export async function startServer() {
   });
 }
 
-startServer();
