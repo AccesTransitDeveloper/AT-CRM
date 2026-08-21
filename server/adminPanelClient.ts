@@ -42,6 +42,8 @@ export class AdminPanelClient {
 
   // Configuration (read strictly from env vars)
   private baseUrl: string;
+  private historyBaseUrl: string;
+  private driverType: number;
   private authMode: 'accessible_transit_admin';
   private clientId: string;
   private clientSecret: string;
@@ -256,8 +258,10 @@ export class AdminPanelClient {
     }
   ];
 
-  private constructor() {
+  public constructor() {
     this.baseUrl = (process.env.AT_ADMIN_API_BASE_URL || 'https://api.accessibletransit.com').replace(/\/$/, '');
+    this.historyBaseUrl = (process.env.AT_ADMIN_HISTORY_API_BASE_URL || 'https://history.accessibletransit.com').replace(/\/$/, '');
+    this.driverType = Number(process.env.AT_ADMIN_DRIVER_TYPE || '3');
     this.authMode = 'accessible_transit_admin';
     this.clientId = 'accessible-transit-admin';
     this.clientSecret = '';
@@ -269,7 +273,7 @@ export class AdminPanelClient {
       type: 'auth_token_issued',
       status: 'info',
       summary: 'AdminPanelClient initialized in CRM backend',
-      details: `Target: ${this.baseUrl} | Auth Mode: Accessible Transit Admin Sign-in | Credentials configured: ${this.isConfigured ? 'yes' : 'no'}`
+      details: `Admin API: ${this.baseUrl} | History API: ${this.historyBaseUrl} | Auth Mode: Accessible Transit Admin Sign-in | Credentials configured: ${this.isConfigured ? 'yes' : 'no'}`
     });
   }
 
@@ -310,7 +314,7 @@ export class AdminPanelClient {
       this.authState.isRefreshing = false;
       this.authState.consecutiveAuthErrors++;
       this.handleApiError('authenticate', err);
-      return { success: false, message: `Authentication error: ${err.message}` };
+      return { success: false, message: `Authentication error: ${this.redactSensitiveErrorMessage(err)}` };
     }
   }
 
@@ -325,10 +329,8 @@ export class AdminPanelClient {
     while (attempt < maxRetries) {
       attempt++;
       try {
-        // Enforce HTTPS in production
-        if (this.baseUrl.startsWith('http://') && !this.baseUrl.includes('localhost')) {
-          throw new Error('Insecure HTTP protocol blocked. HTTPS is required for AdminPanelClient communications.');
-        }
+        this.assertSecureServiceUrl(this.baseUrl, 'Admin API');
+        this.assertSecureServiceUrl(this.historyBaseUrl, 'history API');
 
         if (!this.isConfigured) {
           throw new Error('AT_ADMIN_USERNAME and AT_ADMIN_PASSWORD must be configured before connecting to the Admin Panel.');
@@ -406,7 +408,7 @@ export class AdminPanelClient {
             type: 'auth_error',
             status: 'error',
             summary: `Authentication failed after ${attempt} attempts`,
-            details: err.message
+            details: this.redactSensitiveErrorMessage(err)
           });
           throw err;
         }
@@ -416,6 +418,20 @@ export class AdminPanelClient {
     }
 
     return { success: false, message: 'Max authentication retries exceeded' };
+  }
+
+  private assertSecureServiceUrl(url: string, serviceName: string): void {
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(url);
+    } catch {
+      throw new Error(`Invalid ${serviceName} URL configuration.`);
+    }
+
+    const localDevelopmentHosts = new Set(['localhost', '127.0.0.1', '::1']);
+    if (parsedUrl.protocol !== 'https:' && !(parsedUrl.protocol === 'http:' && localDevelopmentHosts.has(parsedUrl.hostname))) {
+      throw new Error(`Insecure HTTP protocol blocked for ${serviceName}. HTTPS is required for AdminPanelClient communications.`);
+    }
   }
 
   /**
@@ -440,74 +456,165 @@ export class AdminPanelClient {
   // =========================================================================
 
   private async checkRateLimit(): Promise<void> {
-    const now = Date.now();
-    const oneMinuteAgo = now - 60000;
-    
-    // Purge timestamps older than 1 minute
-    this.rateLimiter.timestamps = this.rateLimiter.timestamps.filter(t => t > oneMinuteAgo);
+    while (true) {
+      const now = Date.now();
+      const oneMinuteAgo = now - 60000;
+      this.rateLimiter.timestamps = this.rateLimiter.timestamps.filter(t => t > oneMinuteAgo);
 
-    if (this.rateLimiter.timestamps.length >= this.rateLimiter.maxPerMinute) {
+      if (this.rateLimiter.timestamps.length < this.rateLimiter.maxPerMinute) {
+        this.rateLimiter.timestamps.push(now);
+        return;
+      }
+
+      const oldestRequest = this.rateLimiter.timestamps[0];
+      const waitMs = Math.max(1000, oldestRequest + 60000 - now);
       this.addLog({
         type: 'rate_limit_throttle',
         status: 'warning',
         summary: 'Rate limit threshold reached: request throttled',
         details: `Current: ${this.rateLimiter.timestamps.length} req/min (Limit: ${this.rateLimiter.maxPerMinute})`
       });
-      // Pause for 1 second to avoid upstream ban
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, waitMs));
     }
+  }
 
-    this.rateLimiter.timestamps.push(now);
+  private getTripHistoryPollIntervalMs(): number {
+    const configuredMs = parseInt(process.env.CLONE_SYNC_POLL_INTERVAL_MS || '600000', 10);
+    return Math.max(Number.isFinite(configuredMs) ? configuredMs : 600000, 600000);
   }
 
   // =========================================================================
   // 3. EXTERNAL API DATA FETCH METHODS (DRIVERS, ORDERS, LOCATIONS)
   // =========================================================================
 
-  private async fetchAdminCollection(path: string, params?: Record<string, string | number | undefined>): Promise<Record<string, any>[]> {
-    const url = new URL(`${this.baseUrl}${path}`);
+  private async fetchAdminCollection(
+    serviceBaseUrl: string,
+    path: string,
+    params?: Record<string, string | number | undefined>
+  ): Promise<Record<string, any>[]> {
+    const url = new URL(`${serviceBaseUrl}${path}`);
     for (const [key, value] of Object.entries(params || {})) {
       if (value !== undefined) url.searchParams.set(key, String(value));
     }
 
-    const response = await fetch(url, {
-      headers: {
-        'Authorization': this.authState.accessToken || '',
-        'type': '1',
-        'Accept': 'application/json'
+    const requestCollection = async () => {
+      await this.checkRateLimit();
+      return fetch(url, {
+        headers: {
+          'Authorization': this.authState.accessToken || '',
+          'type': '1',
+          'Accept': 'application/json'
+        }
+      });
+    };
+
+    let response = await requestCollection();
+
+    // The Admin Panel can invalidate a session while the configured credentials
+    // remain valid. Its gateway reports this as 409 rather than a conventional
+    // 401, so refresh the server-side session once and retry the same read.
+    if ([401, 403, 409].includes(response.status)) {
+      const refresh = await this.authenticate(true);
+      if (refresh.success) {
+        response = await requestCollection();
       }
-    });
+    }
 
     if (!response.ok) {
       throw new Error(`Admin Panel resource ${path} failed (HTTP ${response.status}).`);
     }
 
-    const body = await response.json();
-    const data = body?.data ?? body;
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      throw new Error(`Admin Panel resource ${path} returned a non-JSON response.`);
+    }
+    const data: any = (body && typeof body === 'object'
+      ? (body as Record<string, unknown>).data
+      : undefined) ?? body;
     if (Array.isArray(data)) return data;
     if (Array.isArray(data?.data)) return data.data;
+    if (Array.isArray(data?.users)) return data.users;
     if (Array.isArray(data?.drivers)) return data.drivers;
     if (Array.isArray(data?.bookings)) return data.bookings;
     if (Array.isArray(data?.orders)) return data.orders;
-    return [];
+    throw new Error(`Admin Panel resource ${path} returned an unrecognized collection envelope.`);
+  }
+
+  private async fetchAllAdminCollection(
+    serviceBaseUrl: string,
+    path: string,
+    params?: Record<string, string | number | undefined>
+  ): Promise<Record<string, any>[]> {
+    const limit = Number(params?.limit || 100);
+    const records: Record<string, any>[] = [];
+    const seenRecordIds = new Set<string>();
+
+    for (let page = 1; ; page++) {
+      const batch = await this.fetchAdminCollection(serviceBaseUrl, path, { ...params, page, limit });
+      const newRecords = batch.filter((record) => {
+        const id = record._id || record.id || record.bookingId || record.driverId;
+        if (!id) return true;
+        if (seenRecordIds.has(String(id))) return false;
+        seenRecordIds.add(String(id));
+        return true;
+      });
+      records.push(...newRecords);
+      if (batch.length < limit) return records;
+      if (newRecords.length === 0) {
+        throw new Error(`Admin Panel resource ${path} returned a duplicate page; synchronization stopped to prevent a loop.`);
+      }
+    }
+  }
+
+  private asIsoTimestamp(value: unknown): string {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return new Date(value < 100_000_000_000 ? value * 1000 : value).toISOString();
+    }
+    if (typeof value === 'string' && value.trim()) {
+      const parsed = Date.parse(value);
+      return Number.isNaN(parsed) ? new Date().toISOString() : new Date(parsed).toISOString();
+    }
+    return new Date().toISOString();
+  }
+
+  private mapDriverStatus(rawStatus: unknown): ExternalCloneDriverPayload['status'] {
+    const status = typeof rawStatus === 'number' ? rawStatus : String(rawStatus || '').toLowerCase();
+    if (status === 1 || status === 'active' || status === 'approved') return 'active';
+    if (status === 3 || status === 'unapproved' || status === 'pending' || status === 'pending_approval') return 'pending_approval';
+    if (status === 4 || status === 'rejected') return 'rejected';
+    if (status === 2 || status === 6 || status === 'inactive' || status === 'suspended' || status === 'blocked') return 'suspended';
+    return 'offline';
+  }
+
+  private mapBookingStatus(rawStatus: unknown, completedAt?: unknown): ExternalCloneOrderPayload['status'] {
+    const status = typeof rawStatus === 'number' ? rawStatus : String(rawStatus || '').toUpperCase();
+    if (status === 70 || status === 'ARRIVED_AT_DESTINATION' || status === 'COMPLETED') return 'COMPLETED';
+    if (status === 90 || status === 'CANCELLED' || status === 'CANCELED') return 'CANCELLED';
+    if (completedAt) return 'COMPLETED';
+    if (status === 10 || status === 'REQUESTED' || status === 'NEW') return 'NEW';
+    if (status === 20 || status === 30 || status === 'ASSIGNED' || status === 'ACCEPTED') return 'ACCEPTED';
+    if (status === 40 || status === 50 || status === 'IN_ROUTE' || status === 'ARRIVED_AT_PICKUP') return 'EN_ROUTE';
+    if (status === 60 || status === 'STARTED' || status === 'ON_TRIP') return 'ON_TRIP';
+    return 'NEW';
   }
 
   private mapAdminDriver(raw: Record<string, any>): ExternalCloneDriverPayload {
     const vehicle = raw.vehicleDetail || raw.vehicle || {};
     const location = raw.location || raw.currentLocation;
-    const status = String(raw.status || raw.driverStatus || 'offline').toLowerCase();
+    const fullName = raw.fullName || raw.name || `${raw.firstName || ''} ${raw.lastName || ''}`.trim();
+    const phone = [raw.countryPhoneCode, raw.phone || raw.phoneNumber].filter(Boolean).join(' ').trim();
 
     return {
       id: String(raw._id || raw.id || raw.driverId),
-      full_name: String(raw.fullName || raw.name || `${raw.firstName || ''} ${raw.lastName || ''}`.trim() || 'Unknown driver'),
-      phone: String(raw.phone || raw.phoneNumber || ''),
+      full_name: String(fullName || 'Unknown driver'),
+      phone,
       email: raw.email || undefined,
       tlc_license_number: String(raw.tlcLicenseNumber || raw.licenseNumber || raw.license || ''),
-      status: ['active', 'pending_approval', 'suspended', 'rejected', 'offline'].includes(status)
-        ? status as ExternalCloneDriverPayload['status']
-        : 'offline',
+      status: this.mapDriverStatus(raw.status ?? raw.driverStatus),
       vehicle: {
-        type: String(vehicle.type || vehicle.vehicleType || raw.vehicleType || ''),
+        type: String(vehicle.type || vehicle.vehicleType || raw.vehicleType?.name || raw.vehicleType || ''),
         make_model: String(vehicle.make_model || vehicle.makeModel || `${vehicle.make || ''} ${vehicle.model || ''}`.trim()),
         plate: String(vehicle.plate || vehicle.plateNumber || raw.vehiclePlate || ''),
         year: Number(vehicle.year || raw.vehicleYear || 0),
@@ -525,33 +632,22 @@ export class AdminPanelClient {
             updated_at: String(location.updated_at || location.updatedAt || new Date().toISOString())
           }
         : undefined,
-      updated_at: raw.updatedAt || raw.updated_at
+      updated_at: raw.updatedAt || raw.updated_at || raw.lastActiveAt || raw.createdAt
     };
   }
 
   private mapAdminOrder(raw: Record<string, any>): ExternalCloneOrderPayload {
-    const pickup = raw.pickup || raw.pickupLocation || {};
-    const dropoff = raw.dropoff || raw.destination || raw.dropoffLocation || {};
-    const passenger = raw.passenger || raw.user || raw.customer || {};
-    const driver = raw.driver || {};
-    const statusMap: Record<string, ExternalCloneOrderPayload['status']> = {
-      NEW: 'NEW',
-      PENDING: 'NEW',
-      ACCEPTED: 'ACCEPTED',
-      ASSIGNED: 'ACCEPTED',
-      DRIVER_EN_ROUTE: 'EN_ROUTE',
-      EN_ROUTE: 'EN_ROUTE',
-      STARTED: 'ON_TRIP',
-      ON_TRIP: 'ON_TRIP',
-      COMPLETED: 'COMPLETED',
-      CANCELLED: 'CANCELLED'
-    };
-    const rawStatus = String(raw.status || raw.bookingStatus || 'NEW').toUpperCase();
+    const pickup = raw.pickupAddress || raw.pickup || raw.pickupLocation || {};
+    const destinationAddresses = raw.destinationAddresses || [];
+    const dropoff = destinationAddresses[destinationAddresses.length - 1] || raw.dropoff || raw.destination || raw.dropoffLocation || {};
+    const passenger = raw.customerDetail || raw.passenger || raw.user || raw.customer || {};
+    const driver = raw.driverDetail || raw.driver || raw.providerDetail || {};
+    const invoice = raw.bookingInvoice?.actual || raw.bookingInvoice?.estimated || raw.bookingInvoice || {};
 
     return {
       id: String(raw._id || raw.id || raw.bookingId),
       order_code: String(raw.uniqueId || raw.bookingNumber || raw.orderCode || raw._id || raw.id),
-      status: statusMap[rawStatus] || 'NEW',
+      status: this.mapBookingStatus(raw.status || raw.bookingStatus, raw.completedAt),
       passenger: {
         name: String(passenger.fullName || passenger.name || raw.userName || ''),
         phone: String(passenger.phone || passenger.phoneNumber || raw.userPhone || '')
@@ -576,15 +672,16 @@ export class AdminPanelClient {
         lng: Number(dropoff.lng ?? dropoff.longitude) || undefined
       },
       fare: {
-        total_amount: Number(raw.totalFare || raw.totalAmount || raw.estimatedFare || 0),
-        rate: Number(raw.rate || raw.fare || 0) || undefined,
+        total_amount: Number(invoice.total ?? raw.totalFare ?? raw.totalAmount ?? raw.estimatedFare ?? 0),
+        rate: Number(invoice.total ?? raw.rate ?? raw.fare ?? 0) || undefined,
         copay: Number(raw.copay || 0) || undefined,
         commission_rate: Number(raw.commissionRate || 0) || undefined
       },
-      vehicle_type: raw.vehicleType || raw.vehicle?.type,
+      vehicle_type: raw.vehicleType?.name || raw.vehicleType || raw.vehicle?.type,
       requires_wav: Boolean(raw.requiresWav || raw.isWheelchairAccessible),
-      created_at: String(raw.createdAt || raw.created_at || new Date().toISOString()),
-      updated_at: String(raw.updatedAt || raw.updated_at || new Date().toISOString())
+      created_at: this.asIsoTimestamp(raw.createdAt || raw.created_at || raw.bookingTime),
+      updated_at: this.asIsoTimestamp(raw.updatedAt || raw.updated_at || raw.completedAt || raw.createdAt || raw.bookingTime),
+      completed_at: raw.completedAt ? this.asIsoTimestamp(raw.completedAt) : undefined
     };
   }
 
@@ -593,13 +690,13 @@ export class AdminPanelClient {
    */
   public async fetchDrivers(params?: { updatedSince?: string; limit?: number }): Promise<ExternalCloneDriverPayload[]> {
     await this.ensureAuthenticated();
-    await this.checkRateLimit();
     const startTime = Date.now();
 
     try {
-      const endpoint = process.env.AT_ADMIN_DRIVERS_PATH || '/api/driver';
-      const drivers = (await this.fetchAdminCollection(endpoint, {
-        updatedSince: params?.updatedSince,
+      const endpoint = (process.env.AT_ADMIN_DRIVERS_PATH || '/api/user/{type}')
+        .replace('{type}', String(this.driverType));
+      const drivers = (await this.fetchAllAdminCollection(this.baseUrl, endpoint, {
+        page: 1,
         limit: params?.limit || 100
       })).map((driver) => this.mapAdminDriver(driver));
       
@@ -625,18 +722,15 @@ export class AdminPanelClient {
   /**
    * Fetch Live Orders & Statuses (for Live Orders & Dispatch Polling)
    */
-  public async fetchLiveOrders(params?: { status?: string; updatedSince?: string }): Promise<ExternalCloneOrderPayload[]> {
+  public async fetchLiveOrders(params?: { status?: string; updatedSince?: string; limit?: number }): Promise<ExternalCloneOrderPayload[]> {
     await this.ensureAuthenticated();
-    await this.checkRateLimit();
     const startTime = Date.now();
 
     try {
-      const endpoint = process.env.AT_ADMIN_ORDERS_PATH || '/api/booking';
-      const orders = (await this.fetchAdminCollection(endpoint, {
-        status: params?.status,
-        updatedSince: params?.updatedSince,
+      const endpoint = process.env.AT_ADMIN_ORDERS_PATH || '/api/booking_history';
+      const orders = (await this.fetchAllAdminCollection(this.historyBaseUrl, endpoint, {
         page: 1,
-        limit: 100
+        limit: params?.limit || 100
       })).map((order) => this.mapAdminOrder(order));
 
       this.totalSyncedOrders = orders.length;
@@ -645,7 +739,7 @@ export class AdminPanelClient {
       this.addLog({
         type: 'orders_poll',
         status: 'success',
-        summary: `Live Poll: ${orders.length} orders synchronized from Accessible Transit Admin`,
+        summary: `Trip history sync: ${orders.length} bookings synchronized from Accessible Transit Admin`,
         recordsCount: orders.length,
         durationMs: Date.now() - startTime,
         endpoint
@@ -663,24 +757,22 @@ export class AdminPanelClient {
    * e.g. when manager approves, suspends, or rejects driver in CRM
    */
   public async pushDriverStatusUpdate(externalId: string, status: string, reason?: string): Promise<boolean> {
-    await this.ensureAuthenticated();
-    await this.checkRateLimit();
-
     try {
-      const template = process.env.AT_ADMIN_DRIVER_STATUS_PATH_TEMPLATE;
-      if (!template) {
-        throw new Error('Reverse driver-status sync is disabled until AT_ADMIN_DRIVER_STATUS_PATH_TEMPLATE is configured.');
-      }
-
-      const endpoint = template.replace('{id}', encodeURIComponent(externalId));
+      await this.ensureAuthenticated();
+      await this.checkRateLimit();
+      const template = process.env.AT_ADMIN_DRIVER_STATUS_PATH_TEMPLATE || '/api/user/status/{type}/{id}';
+      const endpoint = template
+        .replace('{type}', String(this.driverType))
+        .replace('{id}', encodeURIComponent(externalId));
+      this.assertSecureServiceUrl(this.baseUrl, 'Admin API');
       const response = await fetch(`${this.baseUrl}${endpoint}`, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': this.authState.accessToken || '',
           'type': '1'
         },
-        body: JSON.stringify({ status, reason, isShowSuccessToast: false })
+        body: JSON.stringify({ status: this.mapCrmStatusToAdminStatus(status) })
       });
       if (!response.ok) throw new Error(`Admin Panel status update failed (HTTP ${response.status}).`);
 
@@ -696,6 +788,21 @@ export class AdminPanelClient {
     } catch (err: any) {
       this.handleApiError('pushDriverStatusUpdate', err);
       return false;
+    }
+  }
+
+  private mapCrmStatusToAdminStatus(status: string): number {
+    switch (status.toLowerCase()) {
+      case 'active':
+      case 'approved':
+        return 1;
+      case 'suspended':
+      case 'blocked':
+        return 2;
+      case 'rejected':
+        return 4;
+      default:
+        return 3;
     }
   }
 
@@ -727,9 +834,10 @@ export class AdminPanelClient {
   // =========================================================================
 
   private handleApiError(operation: string, err: any): void {
+    const errorMessage = this.redactSensitiveErrorMessage(err);
     this.consecutiveErrors++;
     this.totalSyncErrors++;
-    this.lastError = `${operation}: ${err.message}`;
+    this.lastError = `${operation}: ${errorMessage}`;
     this.lastErrorTime = new Date().toISOString();
 
     if (!this.firstFailureTimestamp) {
@@ -742,13 +850,33 @@ export class AdminPanelClient {
       type: 'auth_error',
       status: 'error',
       summary: `API Sync Failure during [${operation}]`,
-      details: `${err.message} (Downtime: ${downtimeDurationSeconds}s | Consecutive errors: ${this.consecutiveErrors})`
+      details: `${errorMessage} (Downtime: ${downtimeDurationSeconds}s | Consecutive errors: ${this.consecutiveErrors})`
     });
 
     // Alert if downtime exceeds 5 minutes (300 seconds)
     if (downtimeDurationSeconds >= 300) {
       this.triggerLongDowntimeAlert(downtimeDurationSeconds);
     }
+  }
+
+  private redactSensitiveErrorMessage(err: unknown): string {
+    const message = err instanceof Error ? err.message : String(err || 'Unknown Admin Panel error');
+    const sensitiveValues = [
+      this.username,
+      process.env.AT_ADMIN_PASSWORD,
+      this.authState.accessToken,
+      this.authState.refreshToken
+    ].filter((value): value is string => Boolean(value && value.length >= 3));
+
+    const withoutKnownValues = sensitiveValues.reduce(
+      (redacted, value) => redacted.replaceAll(value, '[REDACTED]'),
+      message
+    );
+
+    return withoutKnownValues.replace(
+      /\b(password|passwd|token|authorization|secret|credential)\s*[:=]\s*(?:Bearer\s+)?(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi,
+      '$1=[REDACTED]'
+    );
   }
 
   private triggerLongDowntimeAlert(downtimeSec: number): void {
@@ -806,7 +934,7 @@ export class AdminPanelClient {
         lastLiveOrdersSync: this.lastLiveOrdersSync || undefined,
         lastDriversSync: this.lastDriversSync || undefined,
         livePollingActive: true,
-        pollIntervalSeconds: Math.floor(parseInt(process.env.CLONE_SYNC_POLL_INTERVAL_MS || '20000', 10) / 1000),
+        pollIntervalSeconds: Math.floor(this.getTripHistoryPollIntervalMs() / 1000),
         profileSyncIntervalMinutes: Math.floor(parseInt(process.env.CLONE_SYNC_PROFILE_INTERVAL_MS || '600000', 10) / 60000),
         totalSyncedDrivers: this.totalSyncedDrivers,
         totalSyncedOrders: this.totalSyncedOrders,
@@ -828,7 +956,7 @@ export class AdminPanelClient {
       baseUrl: this.baseUrl,
       authMode: this.authMode,
       clientIdMasked: this.clientId ? `${this.clientId.slice(0, 4)}••••${this.clientId.slice(-3)}` : 'Not Set',
-      liveOrderPollIntervalMs: parseInt(process.env.CLONE_SYNC_POLL_INTERVAL_MS || '20000', 10),
+      liveOrderPollIntervalMs: this.getTripHistoryPollIntervalMs(),
       driverProfileSyncIntervalMs: parseInt(process.env.CLONE_SYNC_PROFILE_INTERVAL_MS || '600000', 10),
       enableWebhooks: true,
       enableReverseSync: true,
