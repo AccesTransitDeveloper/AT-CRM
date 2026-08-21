@@ -6,7 +6,7 @@ let appPromise: Promise<ExpressHandler> | null = null;
 
 async function getApp(): Promise<ExpressHandler> {
   if (!appPromise) {
-    appPromise = import('../server').then(({ createApp }) => createApp());
+    appPromise = import('../server.js').then(({ createApp }) => createApp());
   }
 
   return appPromise;
